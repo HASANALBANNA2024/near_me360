@@ -46,20 +46,21 @@ class HomeContent extends StatelessWidget {
     ];
 
     return Scaffold(
-      backgroundColor:
-          Colors.transparent, // মেইন স্ক্রিনের ব্যাকগ্রাউন্ড ধরে রাখার জন্য
+      backgroundColor: Colors.transparent,
+
+      /// background of main screen
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ১. ম্যাপ প্যানেল (সব ভিউতেই সবার উপরে থাকবে)
+            /// map panel all view
             const MapView(),
             const SizedBox(height: 20),
 
-            // স্ক্রিন সাইজ অনুযায়ী নিচে লেআউট চেঞ্জ হবে
+            /// layout change based on screen size
             if (isMobile) ...[
-              // ------ মোবাইল ও ছোট স্ক্রিনের লেআউট (সব কনটেন্ট এক লাইনে স্ক্রোল হবে) ------
+              /// ------ mobile and small screen layout ------
               const CategoryGrid(),
               const SizedBox(height: 20),
 
@@ -68,7 +69,7 @@ class HomeContent extends StatelessWidget {
               ...listings.map((item) => NearbyListingCard(listing: item)),
               const SizedBox(height: 16),
 
-              // মোবাইলের জন্য বাকি সব প্যানেল নিচে নিচে যুক্ত করা হলো
+              /// all panel add for mobile view
               const QuickFinderPanel(),
               const SizedBox(height: 16),
               const AlertsPanel(),
@@ -79,11 +80,11 @@ class HomeContent extends StatelessWidget {
               const SizedBox(height: 16),
               const SettingsPanel(),
             ] else ...[
-              // ------ ওয়েব ও বড় স্ক্রিনের লেআউট (পাশাপাশি কলাম) ------
+              /// ------ web and big screen layout ------
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // বাম পাশের বড় অংশ (ক্যাটাগরি, কুইক ফাইন্ডার ও গ্রাফ)
+                  /// category, quick finder and graph
                   Expanded(
                     flex: 2,
                     child: Column(
@@ -110,7 +111,7 @@ class HomeContent extends StatelessWidget {
                   ),
                   const SizedBox(width: 20),
 
-                  // ডান পাশের ছোট অংশ (লিস্টিং ও কুইক সেটিংস)
+                  /// listing quick settings
                   Expanded(
                     flex: 1,
                     child: Column(
@@ -135,7 +136,7 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  // টাইটেল বিল্ড করার জন্য একটি ছোট হেল্পার মেথড
+  /// title build to helper method
   Widget _buildSectionTitle(String title) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
