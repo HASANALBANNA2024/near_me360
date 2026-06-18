@@ -26,144 +26,180 @@ class HomeContent extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: homeProvider.isLoading
-          ? const Center(child: CircularProgressIndicator()) // ডাটা লোডিং স্টেট
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// map panel all view
-                  const MapView(),
-                  const SizedBox(height: 20),
+      // 🎯 কন্টেন্ট এবং ইন্ডিকেটর একসাথ করার জন্য পুরো বডি Stack করা হলো
+      body: Stack(
+        children: [
+          // -----------------------------------------------------------------
+          // 📦 ১. মূল ইউআই কন্টেন্ট লেয়ার
+          // 🎯 ম্যাজিক: ক্যাটাগরি বা কাস্টম সার্চ চললে ফুল স্ক্রিন লোডার ইউআই আটকে রাখবে না
+          // -----------------------------------------------------------------
+          homeProvider.isLoading && !homeProvider.isCustomSearching
+              ? const Center(
+                  child: CircularProgressIndicator(),
+                ) // একদম ফার্স্ট টাইম ফুল লোডিং স্টেট
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      /// map panel all view
+                      const MapView(),
+                      const SizedBox(height: 20),
 
-                  /// layout change based on screen size
-                  if (isMobile) ...[
-                    /// ------ mobile and small screen layout ------
-                    const CategoryGrid(),
-                    const SizedBox(height: 20),
+                      /// layout change based on screen size
+                      if (isMobile) ...[
+                        /// ------ mobile and small screen layout ------
+                        const CategoryGrid(),
+                        const SizedBox(height: 20),
 
-                    // 🎯 ফিক্স: এখানে context পাস করা হয়েছে
-                    _buildSectionTitle(
-                      context,
-                      'Nearby Listings (${homeProvider.totalItems})',
-                    ),
-                    const SizedBox(height: 8),
-
-                    listings.isEmpty
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(20),
-                              child: Text('No services found 🔍'),
-                            ),
-                          )
-                        : Column(
-                            children: [
-                              ...listings
-                                  .map(
-                                    (item) => NearbyListingCard(listing: item),
-                                  )
-                                  .toList(),
-
-                              // 🎯 মোবাইলের জন্য পেজিনেশন কন্ট্রোলার (লিস্টের ঠিক নিচে)
-                              _buildPaginationController(context, homeProvider),
-                            ],
-                          ),
-                    const SizedBox(height: 16),
-
-                    const QuickFinderPanel(),
-                    const SizedBox(height: 16),
-                    const AlertsPanel(),
-                    const SizedBox(height: 16),
-                    const StatsPanel(),
-                    const SizedBox(height: 16),
-                    const RecentSearchesPanel(),
-                    const SizedBox(height: 16),
-                    const SettingsPanel(),
-                  ] else ...[
-                    /// ------ web and big screen layout ------
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        /// category, quick finder and graph
-                        Expanded(
-                          flex: 2,
-                          child: Column(
-                            children: [
-                              const CategoryGrid(),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: const [
-                                  Expanded(child: QuickFinderPanel()),
-                                  SizedBox(width: 16),
-                                  Expanded(child: AlertsPanel()),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: const [
-                                  Expanded(child: StatsPanel()),
-                                  SizedBox(width: 16),
-                                  Expanded(child: RecentSearchesPanel()),
-                                ],
-                              ),
-                            ],
-                          ),
+                        // 🎯 ফিক্স: এখানে context পাস করা হয়েছে
+                        _buildSectionTitle(
+                          context,
+                          'Nearby Listings (${homeProvider.totalItems})',
                         ),
-                        const SizedBox(width: 20),
+                        const SizedBox(height: 8),
 
-                        /// listing quick settings
-                        Expanded(
-                          flex: 1,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // 🎯 ফিক্স: এখানে context পাস করা হয়েছে
-                              _buildSectionTitle(
-                                context,
-                                'Nearby Listings (${homeProvider.totalItems})',
+                        listings.isEmpty
+                            ? const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(20),
+                                  child: Text('No services found 🔍'),
+                                ),
+                              )
+                            : Column(
+                                children: [
+                                  ...listings
+                                      .map(
+                                        (item) =>
+                                            NearbyListingCard(listing: item),
+                                      )
+                                      .toList(),
+
+                                  // 🎯 মোবাইলের জন্য পেজিনেশন কন্ট্রোলার (লিস্টের ঠিক নিচে)
+                                  _buildPaginationController(
+                                    context,
+                                    homeProvider,
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 12),
+                        const SizedBox(height: 16),
 
-                              listings.isEmpty
-                                  ? const Center(
-                                      child: Padding(
-                                        padding: EdgeInsets.all(20),
-                                        child: Text('No services found 🔍'),
-                                      ),
-                                    )
-                                  : Column(
-                                      children: [
-                                        ...listings
-                                            .map(
-                                              (item) => NearbyListingCard(
-                                                listing: item,
-                                              ),
-                                            )
-                                            .toList(),
+                        const QuickFinderPanel(),
+                        const SizedBox(height: 16),
+                        const AlertsPanel(),
+                        const SizedBox(height: 16),
+                        const StatsPanel(),
+                        const SizedBox(height: 16),
+                        const RecentSearchesPanel(),
+                        const SizedBox(height: 16),
+                        const SettingsPanel(),
+                      ] else ...[
+                        /// ------ web and big screen layout ------
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            /// category, quick finder and graph
+                            Expanded(
+                              flex: 2,
+                              child: Column(
+                                children: [
+                                  const CategoryGrid(),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    children: const [
+                                      Expanded(child: QuickFinderPanel()),
+                                      SizedBox(width: 16),
+                                      Expanded(child: AlertsPanel()),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    children: const [
+                                      Expanded(child: StatsPanel()),
+                                      SizedBox(width: 16),
+                                      Expanded(child: RecentSearchesPanel()),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 20),
 
-                                        // 🎯 ওয়েব/বড় স্ক্রিনের জন্য পেজিনেশন কন্ট্রোলার (লিস্টের ঠিক নিচে)
-                                        _buildPaginationController(
-                                          context,
-                                          homeProvider,
+                            /// listing quick settings
+                            Expanded(
+                              flex: 1,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // 🎯 ফিক্স: এখানে context পাস করা হয়েছে
+                                  _buildSectionTitle(
+                                    context,
+                                    'Nearby Listings (${homeProvider.totalItems})',
+                                  ),
+                                  const SizedBox(height: 12),
+
+                                  listings.isEmpty
+                                      ? const Center(
+                                          child: Padding(
+                                            padding: EdgeInsets.all(20),
+                                            child: Text('No services found 🔍'),
+                                          ),
+                                        )
+                                      : Column(
+                                          children: [
+                                            ...listings
+                                                .map(
+                                                  (item) => NearbyListingCard(
+                                                    listing: item,
+                                                  ),
+                                                )
+                                                .toList(),
+
+                                            // 🎯 ওয়েব/বড় স্ক্রিনের জন্য পেজিনেশন কন্ট্রোলার (লিস্টের ঠিক নিচে)
+                                            _buildPaginationController(
+                                              context,
+                                              homeProvider,
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
-                              const SizedBox(height: 16),
-                              const SettingsPanel(),
-                            ],
-                          ),
+                                  const SizedBox(height: 16),
+                                  const SettingsPanel(),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ],
-                    ),
-                  ],
-                ],
+                    ],
+                  ),
+                ),
+
+          // -----------------------------------------------------------------
+          // 🚀 ২. লাইটওয়েট ম্যাজিক ইন্ডিকেটর (সবার উপরে ভেসে উঠবে)
+          // 🎯 যেকোনো ক্যাটাগরি বা Others কাস্টম সার্চে ক্লিক করলে রেজাল্ট আসার আগ পর্যন্ত সচল থাকবে
+          // -----------------------------------------------------------------
+          if (homeProvider.isCustomSearching)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(
+                backgroundColor: Colors.transparent,
+                // ক্যাটাগরি ওয়াইজ কালার ডাইনামিকালি সেট হবে
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  homeProvider.getColorForCategory(
+                    homeProvider.selectedCategory,
+                  ),
+                ),
+                minHeight: 3, // একদম স্লিম ও লাক্সারি লুক
               ),
             ),
+        ],
+      ),
     );
   }
 
-  // 🎯 ফিক্সড মেথড: প্যারামিটারে BuildContext context যুক্ত করা হয়েছে যেন See All বাটন কাজ করে
+  // 🎯 ফিক্সড মেথড: প্যারামিটারে BuildContext context যুক্ত করা হয়েছে যেন See All বাটন কাজ করে
   Widget _buildSectionTitle(BuildContext context, String title) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,

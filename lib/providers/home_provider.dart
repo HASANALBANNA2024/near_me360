@@ -15,6 +15,9 @@ class HomeProvider extends ChangeNotifier {
   String _selectedCategory = '';
   String _searchQuery = '';
   bool _isLoading = true;
+
+  // 🎯 যেকোনো ক্যাটাগরি বা কাস্টম সার্চের ক্ষেত্রে হালকা টপ ইন্ডিকেশন শো করার ফ্ল্যাগ
+  bool _isCustomSearching = false;
   Position? _userPosition;
 
   ListingModel? _selectedListing;
@@ -48,6 +51,9 @@ class HomeProvider extends ChangeNotifier {
 
   String get selectedCategory => _selectedCategory;
   bool get isLoading => _isLoading;
+
+  // 🎯 ইউআই উইজেট থেকে হালকা ইন্ডিকেটর চেক করার গেটার
+  bool get isCustomSearching => _isCustomSearching;
   double get selectedRadius => _selectedRadius;
   ListingModel? get selectedListing => _selectedListing;
   List<LatLng> get routePoints => _routePoints;
@@ -80,7 +86,8 @@ class HomeProvider extends ChangeNotifier {
   }
 
   Future<void> loadCachedData({bool isSilent = false}) async {
-    if (!isSilent) {
+    // 🎯 মেইন ব্লকিং ফুল-স্ক্রিন লোডারকে সম্পূর্ণ স্কিপ করা হবে যদি কোনো ক্যাটাগরি সার্চ রানিং থাকে
+    if (!isSilent && !_isCustomSearching) {
       _isLoading = true;
       notifyListeners();
     }
@@ -98,11 +105,6 @@ class HomeProvider extends ChangeNotifier {
 
       List<dynamic> list = [];
       if (_selectedCategory.isNotEmpty) {
-        // list = await MapPlacesService.fetchLivePlaces(
-        //   userLocation: userLatLng,
-        //   radiusInKm: _selectedRadius,
-        //   category: _selectedCategory,
-        // );
         list = await MapPlacesService.fetchLivePlaces(
           userLocation: userLatLng,
           radiusInKm: _selectedRadius,
@@ -143,8 +145,8 @@ class HomeProvider extends ChangeNotifier {
           name: name,
           subtitle: subtitle,
           distance: finalDistance,
-          icon: _getIconForCategory(categoryRaw),
-          iconColor: _getColorForCategory(categoryRaw),
+          icon: getIconForCategory(categoryRaw),
+          iconColor: getColorForCategory(categoryRaw),
         );
       }).toList();
 
@@ -156,7 +158,28 @@ class HomeProvider extends ChangeNotifier {
     }
 
     _isLoading = false;
+    _isCustomSearching = false; // 🎯 ডাটা চলে এসেছে, ইন্ডিকেটর বন্ধ হবে
     notifyListeners();
+  }
+
+  // 🎯 নতুন কাস্টম সার্চ মেথড (ইউআই ফুল ভিজিবল রেখে হালকা ইন্ডিকেশন দিবে)
+  void searchCustomQuery(String query) {
+    _routePoints = [];
+    _selectedListing = null;
+    _mapCenter = userLatLng;
+    _mapZoom = 12.0;
+    _currentPage = 0;
+
+    _isCustomSearching = true; // ইন্ডিকেটর ট্রিগার
+
+    if (query.isEmpty) {
+      _selectedCategory = 'Others';
+    } else {
+      _selectedCategory = query;
+    }
+
+    notifyListeners();
+    loadCachedData(isSilent: false);
   }
 
   Future<void> selectListingAndShowRoute(
@@ -296,6 +319,7 @@ class HomeProvider extends ChangeNotifier {
     );
   }
 
+  // 🎯 আপনার রিকোয়ারমেন্ট অনুযায়ী এই মেথডটি মডিফাই করা হলো:
   void filterByCategory(String category) {
     _selectedCategory = _selectedCategory == category ? '' : category;
     _routePoints = [];
@@ -304,8 +328,12 @@ class HomeProvider extends ChangeNotifier {
     _mapZoom = 12.0;
     _currentPage = 0;
 
+    // 🎯 ম্যাজিক লাইন: যেকোনো মেইন গ্রিড ক্যাটাগরিতে ক্লিক করলেও হালকা লোডারটি ট্রিগার হবে
+    _isCustomSearching = _selectedCategory.isNotEmpty;
+
     _applyFilters();
-    loadCachedData(isSilent: true);
+    notifyListeners(); // সঙ্গে সঙ্গে ইন্ডিকেটর অন করবে
+    loadCachedData(isSilent: false);
   }
 
   void searchListings(String query) {
@@ -316,6 +344,16 @@ class HomeProvider extends ChangeNotifier {
 
   void _applyFilters() {
     List<ListingModel> temp = [];
+
+    final knownIcons = [
+      Icons.local_hospital,
+      Icons.local_police,
+      Icons.school,
+      Icons.mosque,
+      Icons.local_gas_station,
+      Icons.directions_bus,
+    ];
+
     for (var item in _allListings) {
       final matchesSearch =
           item.name.toLowerCase().contains(_searchQuery) ||
@@ -332,13 +370,22 @@ class HomeProvider extends ChangeNotifier {
 
       bool matchesRadius = itemKM == 0.0 || itemKM <= _selectedRadius;
       bool matchesCat = _selectedCategory.isEmpty;
+
       if (!matchesCat) {
         String selected = _selectedCategory.toLowerCase().trim();
-        IconData targetIcon = _getIconForCategory(selected);
-        matchesCat =
-            item.icon == targetIcon ||
-            item.name.toLowerCase().contains(selected) ||
-            selected == 'all';
+        IconData targetIcon = getIconForCategory(selected);
+
+        if (selected == 'all') {
+          matchesCat = true;
+        } else if (selected == 'others' || targetIcon == Icons.place) {
+          bool isUnknownCategory = !knownIcons.contains(item.icon);
+          bool nameMatchesQuery = item.name.toLowerCase().contains(selected);
+          matchesCat = isUnknownCategory || nameMatchesQuery;
+        } else {
+          matchesCat =
+              item.icon == targetIcon ||
+              item.name.toLowerCase().contains(selected);
+        }
       }
 
       if (matchesSearch && matchesRadius && matchesCat) {
@@ -366,7 +413,7 @@ class HomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  IconData _getIconForCategory(String category) {
+  IconData getIconForCategory(String category) {
     switch (category.toLowerCase().trim()) {
       case 'hospital':
         return Icons.local_hospital;
@@ -382,12 +429,14 @@ class HomeProvider extends ChangeNotifier {
         return Icons.local_gas_station;
       case 'bus':
         return Icons.directions_bus;
+      case 'others':
+        return Icons.search;
       default:
         return Icons.place;
     }
   }
 
-  Color _getColorForCategory(String category) {
+  Color getColorForCategory(String category) {
     switch (category.toLowerCase().trim()) {
       case 'hospital':
         return Colors.blue;
@@ -403,8 +452,10 @@ class HomeProvider extends ChangeNotifier {
         return Colors.teal;
       case 'bus':
         return Colors.cyan;
+      case 'others':
+        return Colors.purple;
       default:
-        return Colors.grey;
+        return Colors.purpleAccent;
     }
   }
 }
