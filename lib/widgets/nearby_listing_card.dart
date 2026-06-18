@@ -19,11 +19,11 @@ class NearbyListingCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          // 🎯 ক্লিক করার সাথে সাথে ডাটাবেজের রিয়েল কোঅর্ডিনেট ট্র্যাক করে আঁকাবাঁকা রুট দেখাবে
+          // 🎯 ফিক্স: এখানে প্রথমে context এবং পরে listing পাস করা হয়েছে যেন বটম শীট ওপেন হতে পারে
           Provider.of<HomeProvider>(
             context,
             listen: false,
-          ).selectListingAndShowRoute(listing);
+          ).selectListingAndShowRoute(context, listing);
         },
         child: ListTile(
           leading: CircleAvatar(

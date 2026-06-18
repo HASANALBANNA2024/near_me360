@@ -2,12 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../models/listing_model.dart';
-// 👈 অনলাইন থেকে লাইভ ডাটা আনার আলাদা সার্ভিস ফাইল
 import '../services/map_places_service.dart';
 
 class HomeProvider extends ChangeNotifier {
@@ -16,8 +14,6 @@ class HomeProvider extends ChangeNotifier {
 
   String _selectedCategory = '';
   String _searchQuery = '';
-
-  // 🎯 প্রথমবার অ্যাপ ওপেনের সময় true থাকবে, কিন্তু পরে ক্যাটাগরি ক্লিকের সময় স্ক্রিন ব্লাঙ্ক করবে না
   bool _isLoading = true;
   Position? _userPosition;
 
@@ -26,8 +22,8 @@ class HomeProvider extends ChangeNotifier {
   LatLng? _mapCenter;
   double _mapZoom = 12.0;
 
-  // 🎯 নতুন রেডিয়াস কিলোমিটার ভ্যারিয়েবল (ইউজার স্লাইডার দিয়ে কন্ট্রোল করতে পারবে)
-  double _selectedRadius = 30.0;
+  // 🎯 ডিফল্ট রেডিয়াস ৫০ কিলোমিটার সেট করা হলো
+  double _selectedRadius = 50.0;
 
   // 🎯 জিপিএস রুট ট্র্যাক করার জন্য রিয়েল-টাইম ডাটা ম্যাপ
   final Map<String, LatLng> _listingCoordsMap = {};
@@ -35,7 +31,7 @@ class HomeProvider extends ChangeNotifier {
   List<ListingModel> get listings => _filteredListings;
   String get selectedCategory => _selectedCategory;
   bool get isLoading => _isLoading;
-  double get selectedRadius => _selectedRadius; // স্লাইডার উইজেটের জন্য গেটার
+  double get selectedRadius => _selectedRadius;
 
   ListingModel? get selectedListing => _selectedListing;
   List<LatLng> get routePoints => _routePoints;
@@ -47,7 +43,6 @@ class HomeProvider extends ChangeNotifier {
     _userPosition?.longitude ?? 90.4125,
   );
 
-  // 🔄 ইউজারের রেডিয়াস চেঞ্জ করার মেথড (কিলোমিটার বাড়ালে-কমালে এটি রান হবে)
   void updateRadius(double newRadius) {
     _selectedRadius = newRadius;
     if (newRadius <= 10) {
@@ -57,13 +52,10 @@ class HomeProvider extends ChangeNotifier {
     } else {
       _mapZoom = 10.0;
     }
-
-    // রেডিয়াস পরিবর্তন হলে ব্যাকগ্রাউন্ডে ডাটা আপডেট হবে, স্ক্রিন হারাবে না
     loadCachedData(isSilent: true);
   }
 
-  // 🌍 ডাটা লোড করার মেইন মেথড
-  // [isSilent = true] দিলে ব্যাকগ্রাউন্ডে ডাটা রিফ্রেশ হবে, স্ক্রিন ব্লাঙ্ক হয়ে স্পিনার আসবে না!
+  // 🌍 রিয়েল-টাইম লাইভ ফেচ ইঞ্জিন
   Future<void> loadCachedData({bool isSilent = false}) async {
     if (!isSilent) {
       _isLoading = true;
@@ -75,25 +67,19 @@ class HomeProvider extends ChangeNotifier {
       try {
         _userPosition = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.medium,
-          timeLimit: const Duration(seconds: 4),
+          timeLimit: const Duration(seconds: 5),
         );
         _mapCenter = userLatLng;
       } catch (e) {
         print("GPS Position Error: $e");
       }
 
-      final dataBox = Hive.box('cached_listings');
-      final rawData = dataBox.get('full_country_data');
-
       List<dynamic> list = [];
 
-      // 🔄 ১. ডাটাবেজে পিওর রিয়েল ডেটা থাকলে তা লিস্টে নেবে
-      if (rawData != null && rawData['listings'] != null) {
-        list = rawData['listings'];
-      }
-
-      // 🌍 ২. ডাটাবেজ টোটাল খালি থাকলে সরাসরি অনলাইন ম্যাপস থেকে লাইভ রিয়েল ডাটা আনবে!
-      if (list.isEmpty) {
+      // 🎯 ফিক্স: লোকাল ফেক ক্যাশের উপর নির্ভর না করে, ক্যাটাগরি সিলেক্টেড থাকলেই
+      // সরাসরি লাইভ Overpass API থেকে রিয়েল ডাটা তুলে আনা হবে।
+      if (_selectedCategory.isNotEmpty) {
+        print("📡 Fetching Live Data for Category: $_selectedCategory");
         list = await MapPlacesService.fetchLivePlaces(
           userLocation: userLatLng,
           radiusInKm: _selectedRadius,
@@ -108,15 +94,16 @@ class HomeProvider extends ChangeNotifier {
         double lng =
             double.tryParse(e['longitude']?.toString() ?? '0.0') ?? 0.0;
         String name = e['name'] ?? '';
-        String categoryRaw = e['category'] ?? '';
 
-        // অরিজিনাল কোঅর্ডিনেট ম্যাপে লক করে রাখা হচ্ছে যেন পরে রুট খোঁজার সময় মিস না হয়
+        // ক্যাটাগরি এপিআই থেকে ব্ল্যাঙ্ক আসলে সিলেক্টেড ট্যাগ ব্যাকআপ হিসেবে কাজ করবে
+        String categoryRaw = e['category'] ?? _selectedCategory;
+
         if (name.isNotEmpty && lat != 0.0 && lng != 0.0) {
           _listingCoordsMap[name] = LatLng(lat, lng);
         }
 
-        // লাইভ দূরত্ব হিসাব
-        String finalDistance = e['distance'] ?? '0.0km';
+        // 📏 লাইভ দূরত্ব ক্যালকুলেশন লজিক
+        String finalDistance = "0.1km";
         if (_userPosition != null && lat != 0.0 && lng != 0.0) {
           double meters = Geolocator.distanceBetween(
             _userPosition!.latitude,
@@ -125,11 +112,13 @@ class HomeProvider extends ChangeNotifier {
             lng,
           );
           finalDistance = "${(meters / 1000).toStringAsFixed(1)}km";
+        } else if (e['distance'] != null) {
+          finalDistance = e['distance'];
         }
 
         return ListingModel(
           name: name,
-          subtitle: e['subtitle'] ?? 'Near Your Location',
+          subtitle: e['subtitle'] ?? 'Near Your Area',
           distance: finalDistance,
           icon: _getIconForCategory(categoryRaw),
           iconColor: _getColorForCategory(categoryRaw),
@@ -138,7 +127,7 @@ class HomeProvider extends ChangeNotifier {
 
       _applyFilters();
     } catch (e) {
-      print("Error loading real data: $e");
+      print("Error loading data: $e");
       _applyFilters();
     }
 
@@ -146,8 +135,11 @@ class HomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 🏎️ 🎯 ওএসআরএম রিয়েল ড্রাইビング রাউটিং এপিআই রিকোয়েস্ট (বাস্তব আঁকাবাঁকা রাস্তা)
-  Future<void> selectListingAndShowRoute(ListingModel item) async {
+  // 🏎️ 🎯 ওএসআরএম রিয়েল ড্রাইビング রাউটিং এপিআই
+  Future<void> selectListingAndShowRoute(
+    BuildContext context,
+    ListingModel item,
+  ) async {
     _selectedListing = item;
 
     LatLng? destLocation = _listingCoordsMap[item.name];
@@ -158,7 +150,7 @@ class HomeProvider extends ChangeNotifier {
     if (destLocation.latitude == 0.0 || destLocation.longitude == 0.0) return;
 
     _mapCenter = destLocation;
-    _mapZoom = 14.5; // পারফেক্ট ফোকাস জুম
+    _mapZoom = 14.5;
 
     final url =
         'https://router.project-osrm.org/route/v1/driving/'
@@ -184,40 +176,122 @@ class HomeProvider extends ChangeNotifier {
     }
 
     notifyListeners();
+
+    // 🗺️ আইটেমে ক্লিক করলে নিচ থেকে সুন্দর বটম শীট ভেসে উঠবে
+    _showDetailsBottomSheet(context, item);
   }
 
-  // 🗺️ ম্যাপে সবগুলো পিনকে রিয়েল লোকেশনে একসাথে দেখানোর জন্য ফাংশন
+  // 🔽 সুন্দর বটম শীট উইজেট মেথড
+  void _showDetailsBottomSheet(BuildContext context, ListingModel item) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 50,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 15),
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: item.iconColor.withOpacity(0.2),
+                    child: Icon(item.icon, color: item.iconColor),
+                  ),
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        Text(
+                          item.subtitle,
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.directions_car,
+                        color: Colors.blue,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        "Distance: ${item.distance}",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.map, color: Colors.white),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   LatLng getRealLocationForListing(ListingModel item) {
     if (_listingCoordsMap.containsKey(item.name)) {
       return _listingCoordsMap[item.name]!;
     }
-
-    // ডাটা ম্যাপে ব্যাকআপ না থাকলে সরাসরি হাইভ থেকে সার্চ করা হবে
-    final dataBox = Hive.box('cached_listings');
-    final rawData = dataBox.get('full_country_data');
-    if (rawData != null && rawData['listings'] != null) {
-      final match = (rawData['listings'] as List).firstWhere(
-        (e) => e['name'] == item.name,
-        orElse: () => null,
-      );
-      if (match != null) {
-        double lat =
-            double.tryParse(match['latitude']?.toString() ?? '0.0') ?? 0.0;
-        double lng =
-            double.tryParse(match['longitude']?.toString() ?? '0.0') ?? 0.0;
-        if (lat != 0.0) {
-          _listingCoordsMap[item.name] = LatLng(lat, lng);
-          return LatLng(lat, lng);
-        }
-      }
-    }
     return userLatLng;
   }
 
-  // ⚡ ফিক্সড ইন্টেলিজেন্ট ক্যাটাগরি ফিল্টার মেথড (কোনো স্ক্রিন ব্লাঙ্ক হবে না)
   void filterByCategory(String category) {
     if (_selectedCategory == category) {
-      _selectedCategory = ''; // দ্বিতীয়বার ক্লিকে ফিল্টার রিলিজ
+      _selectedCategory = '';
     } else {
       _selectedCategory = category;
     }
@@ -226,10 +300,7 @@ class HomeProvider extends ChangeNotifier {
     _mapCenter = userLatLng;
     _mapZoom = 12.0;
 
-    // 🎯 মূল যাদু এখানে: আমরা লোকাল ডাটা ফিল্টার ইনস্ট্যান্ট অ্যাপ্লাই করে দেব
     _applyFilters();
-
-    // 🔄 ব্যাকগ্রাউন্ডে অনলাইন থেকে লাইভ নতুন ডাটা নিয়ে আসবে, স্ক্রিন একদম কাঁপবেও না!
     loadCachedData(isSilent: true);
   }
 
@@ -238,61 +309,59 @@ class HomeProvider extends ChangeNotifier {
     _applyFilters();
   }
 
-  // 🧠 ১০০% ফিক্সড ইন্টেলিজেন্ট ক্যাটাগরি ফিল্টারিং ইঞ্জিন
+  // 🧠 ১০০% নিখুঁত ডিস্ট্যান্স ফিল্টারিং ও সোর্টিং ইঞ্জিন (যা ডাটা ড্রপ করবে না)
   void _applyFilters() {
-    _filteredListings = _allListings.where((item) {
+    List<ListingModel> temp = [];
+
+    for (var item in _allListings) {
       final matchesSearch =
           item.name.toLowerCase().contains(_searchQuery) ||
           item.subtitle.toLowerCase().contains(_searchQuery);
 
-      // 🎯 স্লাইডারের দূরত্বের ওপর ভিত্তি করে ফিল্টারিং লজিক
+      // কিমি স্ট্রিং ক্লিন করে ডাবল ফরমেটে কনভার্ট করা
       double itemKM =
-          double.tryParse(item.distance.replaceAll('km', '')) ?? 0.0;
-      bool matchesRadius = itemKM <= _selectedRadius;
+          double.tryParse(item.distance.replaceAll('km', '').trim()) ?? 0.0;
+
+      // রেডিয়াসের নিখুঁত ম্যাপিং কন্ডিশন
+      bool matchesRadius = itemKM == 0.0 || itemKM <= _selectedRadius;
 
       bool matchesCat = _selectedCategory.isEmpty;
       if (!matchesCat) {
-        String selected = _selectedCategory.toLowerCase();
+        String selected = _selectedCategory.toLowerCase().trim();
         IconData targetIcon = _getIconForCategory(selected);
 
-        if (selected == 'madrasah' ||
-            selected == 'madrasa' ||
-            selected == 'mosque') {
-          matchesCat =
-              item.icon == Icons.mosque ||
-              item.name.toLowerCase().contains('madrasah') ||
-              item.name.toLowerCase().contains('madrasa') ||
-              item.name.toLowerCase().contains('mosque') ||
-              item.subtitle.toLowerCase().contains('madrasah');
-        } else {
-          matchesCat =
-              item.icon == targetIcon ||
-              item.name.toLowerCase().contains(selected) ||
-              item.subtitle.toLowerCase().contains(selected);
-        }
+        // আইকন ম্যাচিং অথবা ডিরেক্ট টেক্সট কন্টেইন চেক
+        matchesCat =
+            item.icon == targetIcon ||
+            item.name.toLowerCase().contains(selected) ||
+            selected == 'all';
       }
-      return matchesSearch && matchesRadius && matchesCat;
-    }).toList();
 
-    // 🏎️ ডিস্ট্যান্স অনুযায়ী চমৎকার সোর্टिंग (সবচেয়ে কাছের প্লেসগুলো উপরে থাকবে)
-    _filteredListings.sort((a, b) {
-      double distA = double.tryParse(a.distance.replaceAll('km', '')) ?? 999.0;
-      double distB = double.tryParse(b.distance.replaceAll('km', '')) ?? 999.0;
+      if (matchesSearch && matchesRadius && matchesCat) {
+        temp.add(item);
+      }
+    }
+
+    // 🏎️ 🎯 দূরত্ব অনুযায়ী শর্টেস্ট সোর্টিং (মিনিমাম ডিসট্যান্স সবার ওপরে থাকবে)
+    temp.sort((a, b) {
+      double distA =
+          double.tryParse(a.distance.replaceAll('km', '').trim()) ?? 999.0;
+      double distB =
+          double.tryParse(b.distance.replaceAll('km', '').trim()) ?? 999.0;
       return distA.compareTo(distB);
     });
 
+    _filteredListings = temp;
     notifyListeners();
   }
 
   IconData _getIconForCategory(String category) {
-    switch (category.toLowerCase()) {
+    switch (category.toLowerCase().trim()) {
       case 'hospital':
         return Icons.local_hospital;
       case 'police':
         return Icons.local_police;
       case 'school':
-      case 'college':
-      case 'university':
         return Icons.school;
       case 'madrasah':
       case 'madrasa':
@@ -308,17 +377,14 @@ class HomeProvider extends ChangeNotifier {
   }
 
   Color _getColorForCategory(String category) {
-    switch (category.toLowerCase()) {
+    switch (category.toLowerCase().trim()) {
       case 'hospital':
         return Colors.blue;
       case 'police':
         return Colors.indigo;
       case 'school':
-      case 'college':
-      case 'university':
         return Colors.orange;
       case 'madrasah':
-        return Colors.brown;
       case 'madrasa':
       case 'mosque':
         return Colors.green;

@@ -27,59 +27,51 @@ class MapView extends StatelessWidget {
       ),
     );
 
-    // ২. ফিল্টার হওয়া ক্যাটাগরির (১০+ জেনুইন ডাটা) সব রিয়েল লোকেশন পিন একসাথে ম্যাপে রেন্ডার করা
+    // ২. ফিল্টার হওয়া ক্যাটাগরির সব রিয়েল লোকেশন পিন একসাথে ম্যাপে রেন্ডার করা
     for (int i = 0; i < homeProvider.listings.length; i++) {
       var item = homeProvider.listings[i];
 
       // 🎯 সরাসরি Hive ডাটাবেজের রিয়েল LatLng রিড করা হচ্ছে
       LatLng realItemLocation = homeProvider.getRealLocationForListing(item);
 
-      // যদি রিয়েল লোকেশন কোঅর্ডিনেট শূন্য না হয়, তবেই ম্যাপে পুশ হবে
-      if (realItemLocation.latitude != 23.8103 &&
-              realItemLocation.longitude != 90.4125 ||
-          i < 5) {
-        allMarkers.add(
-          Marker(
-            point: realItemLocation,
-            width: 42,
-            height: 42,
-            child: GestureDetector(
-              onTap: () {
-                // ম্যাপের রিয়েল পিনে সরাসরি ক্লিক করলেও আঁকাবাঁকা রুট দেখাবে
-                homeProvider.selectListingAndShowRoute(item);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                decoration: BoxDecoration(
-                  color: homeProvider.selectedListing?.name == item.name
-                      ? Colors.white.withOpacity(0.9)
-                      : Colors.transparent,
-                  shape: BoxShape.circle,
-                  boxShadow: homeProvider.selectedListing?.name == item.name
-                      ? [
-                          BoxShadow(
-                            color: item.iconColor.withOpacity(0.5),
-                            blurRadius: 8,
-                            spreadRadius: 2,
-                          ),
-                        ]
-                      : [],
-                ),
-                child: Icon(
-                  item.icon,
-                  // সিলেক্ট করা পিনটি লাল হবে, বাকি সব রিয়েল পিন ম্যাপে লকড (ধরে রাখবে) থাকবে
-                  color: homeProvider.selectedListing?.name == item.name
-                      ? Colors.red
-                      : item.iconColor,
-                  size: homeProvider.selectedListing?.name == item.name
-                      ? 36
-                      : 28,
-                ),
+      allMarkers.add(
+        Marker(
+          point: realItemLocation,
+          width: 42,
+          height: 42,
+          child: GestureDetector(
+            onTap: () {
+              // 🎯 ফিক্স: এখানে context এবং item দুটোই পাস করা হয়েছে
+              homeProvider.selectListingAndShowRoute(context, item);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              decoration: BoxDecoration(
+                color: homeProvider.selectedListing?.name == item.name
+                    ? Colors.white.withOpacity(0.9)
+                    : Colors.transparent,
+                shape: BoxShape.circle,
+                boxShadow: homeProvider.selectedListing?.name == item.name
+                    ? [
+                        BoxShadow(
+                          color: item.iconColor.withOpacity(0.5),
+                          blurRadius: 8,
+                          spreadRadius: 2,
+                        ),
+                      ]
+                    : [],
+              ),
+              child: Icon(
+                item.icon,
+                color: homeProvider.selectedListing?.name == item.name
+                    ? Colors.red
+                    : item.iconColor,
+                size: homeProvider.selectedListing?.name == item.name ? 36 : 28,
               ),
             ),
           ),
-        );
-      }
+        ),
+      );
     }
 
     return Container(
@@ -105,7 +97,7 @@ class MapView extends StatelessWidget {
                   tileProvider: CachedTileProvider(store: MemCacheStore()),
                 ),
 
-                // 🔵 ডাটাবেজের রিয়েল স্পটের আঁকাবাঁকা আসল রাস্তার লেয়ার
+                // 🔵 ডাটাবেজের রিয়েল স্পটের আঁকাবাঁকা আসল রাস্তার লেয়ার
                 if (homeProvider.routePoints.isNotEmpty)
                   PolylineLayer(
                     polylines: [
@@ -117,7 +109,7 @@ class MapView extends StatelessWidget {
                     ],
                   ),
 
-                // 📍 সবগুলো রিয়েল মার্কার ডিসপ্লে লেয়ার
+                // 📍 সবগুলো রিয়েল মার্কার ডিসপ্লে লেয়ার
                 MarkerLayer(markers: allMarkers),
               ],
             ),
