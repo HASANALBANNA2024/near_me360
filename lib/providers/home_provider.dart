@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../models/listing_model.dart';
+// 👈 অনলাইন থেকে লাইভ ডাটা আনার আলাদা সার্ভিস ফাইল
+import '../services/map_places_service.dart';
 
 class HomeProvider extends ChangeNotifier {
   List<ListingModel> _allListings = [];
@@ -14,6 +16,8 @@ class HomeProvider extends ChangeNotifier {
 
   String _selectedCategory = '';
   String _searchQuery = '';
+
+  // 🎯 প্রথমবার অ্যাপ ওপেনের সময় true থাকবে, কিন্তু পরে ক্যাটাগরি ক্লিকের সময় স্ক্রিন ব্লাঙ্ক করবে না
   bool _isLoading = true;
   Position? _userPosition;
 
@@ -22,12 +26,16 @@ class HomeProvider extends ChangeNotifier {
   LatLng? _mapCenter;
   double _mapZoom = 12.0;
 
+  // 🎯 নতুন রেডিয়াস কিলোমিটার ভ্যারিয়েবল (ইউজার স্লাইডার দিয়ে কন্ট্রোল করতে পারবে)
+  double _selectedRadius = 30.0;
+
   // 🎯 জিপিএস রুট ট্র্যাক করার জন্য রিয়েল-টাইম ডাটা ম্যাপ
   final Map<String, LatLng> _listingCoordsMap = {};
 
   List<ListingModel> get listings => _filteredListings;
   String get selectedCategory => _selectedCategory;
   bool get isLoading => _isLoading;
+  double get selectedRadius => _selectedRadius; // স্লাইডার উইজেটের জন্য গেটার
 
   ListingModel? get selectedListing => _selectedListing;
   List<LatLng> get routePoints => _routePoints;
@@ -39,12 +47,31 @@ class HomeProvider extends ChangeNotifier {
     _userPosition?.longitude ?? 90.4125,
   );
 
-  Future<void> loadCachedData() async {
-    _isLoading = true;
-    notifyListeners();
+  // 🔄 ইউজারের রেডিয়াস চেঞ্জ করার মেথড (কিলোমিটার বাড়ালে-কমালে এটি রান হবে)
+  void updateRadius(double newRadius) {
+    _selectedRadius = newRadius;
+    if (newRadius <= 10) {
+      _mapZoom = 13.5;
+    } else if (newRadius <= 30) {
+      _mapZoom = 12.0;
+    } else {
+      _mapZoom = 10.0;
+    }
+
+    // রেডিয়াস পরিবর্তন হলে ব্যাকগ্রাউন্ডে ডাটা আপডেট হবে, স্ক্রিন হারাবে না
+    loadCachedData(isSilent: true);
+  }
+
+  // 🌍 ডাটা লোড করার মেইন মেথড
+  // [isSilent = true] দিলে ব্যাকগ্রাউন্ডে ডাটা রিফ্রেশ হবে, স্ক্রিন ব্লাঙ্ক হয়ে স্পিনার আসবে না!
+  Future<void> loadCachedData({bool isSilent = false}) async {
+    if (!isSilent) {
+      _isLoading = true;
+      notifyListeners();
+    }
 
     try {
-      // 🛰️ ইউজারের বর্তমান জিপিএস লোকেশন নেওয়া হচ্ছে
+      // 🛰️ ইউজারের বর্তমান জিপিএস লোকেশন নেওয়া হচ্ছে
       try {
         _userPosition = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.medium,
@@ -58,62 +85,68 @@ class HomeProvider extends ChangeNotifier {
       final dataBox = Hive.box('cached_listings');
       final rawData = dataBox.get('full_country_data');
 
+      List<dynamic> list = [];
+
+      // 🔄 ১. ডাটাবেজে পিওর রিয়েল ডেটা থাকলে তা লিস্টে নেবে
       if (rawData != null && rawData['listings'] != null) {
-        List<dynamic> list = rawData['listings'];
-        _listingCoordsMap.clear();
+        list = rawData['listings'];
+      }
 
-        // 🔄 ডাটাবেজের পিওর রিয়েল ডেটা ম্যাপিং
-        _allListings = list.map((e) {
-          double lat =
-              double.tryParse(e['latitude']?.toString() ?? '0.0') ?? 0.0;
-          double lng =
-              double.tryParse(e['longitude']?.toString() ?? '0.0') ?? 0.0;
-          String name = e['name'] ?? '';
-          String categoryRaw = e['category'] ?? '';
+      // 🌍 ২. ডাটাবেজ টোটাল খালি থাকলে সরাসরি অনলাইন ম্যাপস থেকে লাইভ রিয়েল ডাটা আনবে!
+      if (list.isEmpty) {
+        list = await MapPlacesService.fetchLivePlaces(
+          userLocation: userLatLng,
+          radiusInKm: _selectedRadius,
+          category: _selectedCategory,
+        );
+      }
 
-          // অরিজিনাল কোঅর্ডিনেট ম্যাপে লক করে রাখা হচ্ছে যেন পরে রুট খোঁজার সময় মিস না হয়
-          if (name.isNotEmpty && lat != 0.0 && lng != 0.0) {
-            _listingCoordsMap[name] = LatLng(lat, lng);
-          }
+      _listingCoordsMap.clear();
 
-          // লাইভ দূরত্ব হিসাব
-          String finalDistance = e['distance'] ?? '0.0km';
-          if (_userPosition != null && lat != 0.0 && lng != 0.0) {
-            double meters = Geolocator.distanceBetween(
-              _userPosition!.latitude,
-              _userPosition!.longitude,
-              lat,
-              lng,
-            );
-            finalDistance = "${(meters / 1000).toStringAsFixed(1)}km";
-          }
+      _allListings = list.map((e) {
+        double lat = double.tryParse(e['latitude']?.toString() ?? '0.0') ?? 0.0;
+        double lng =
+            double.tryParse(e['longitude']?.toString() ?? '0.0') ?? 0.0;
+        String name = e['name'] ?? '';
+        String categoryRaw = e['category'] ?? '';
 
-          return ListingModel(
-            name: name,
-            subtitle: e['subtitle'] ?? '',
-            distance: finalDistance,
-            icon: _getIconForCategory(categoryRaw),
-            iconColor: _getColorForCategory(categoryRaw),
+        // অরিজিনাল কোঅর্ডিনেট ম্যাপে লক করে রাখা হচ্ছে যেন পরে রুট খোঁজার সময় মিস না হয়
+        if (name.isNotEmpty && lat != 0.0 && lng != 0.0) {
+          _listingCoordsMap[name] = LatLng(lat, lng);
+        }
+
+        // লাইভ দূরত্ব হিসাব
+        String finalDistance = e['distance'] ?? '0.0km';
+        if (_userPosition != null && lat != 0.0 && lng != 0.0) {
+          double meters = Geolocator.distanceBetween(
+            _userPosition!.latitude,
+            _userPosition!.longitude,
+            lat,
+            lng,
           );
-        }).toList();
-      }
+          finalDistance = "${(meters / 1000).toStringAsFixed(1)}km";
+        }
 
-      // 🧪 সেফটি ফলব্যাক: ডাটাবেজ যদি কোনো কারণে টোটাল খালি থাকে, তবে ইউজার যেন জিরো ডাটা না দেখে
-      if (_allListings.isEmpty) {
-        _insertFallbackData();
-      }
+        return ListingModel(
+          name: name,
+          subtitle: e['subtitle'] ?? 'Near Your Location',
+          distance: finalDistance,
+          icon: _getIconForCategory(categoryRaw),
+          iconColor: _getColorForCategory(categoryRaw),
+        );
+      }).toList();
 
       _applyFilters();
     } catch (e) {
-      print("Error loading real data from Hive: $e");
-      _insertFallbackData();
+      print("Error loading real data: $e");
       _applyFilters();
     }
+
     _isLoading = false;
     notifyListeners();
   }
 
-  // 🏎️ 🎯 ওএসআরএম রিয়েল ড্রাইভিং রাউটিং এপিআই রিকোয়েস্ট (বাস্তব আঁকাবাঁকা রাস্তা)
+  // 🏎️ 🎯 ওএসআরএম রিয়েল ড্রাইビング রাউটিং এপিআই রিকোয়েস্ট (বাস্তব আঁকাবাঁকা রাস্তা)
   Future<void> selectListingAndShowRoute(ListingModel item) async {
     _selectedListing = item;
 
@@ -181,9 +214,10 @@ class HomeProvider extends ChangeNotifier {
     return userLatLng;
   }
 
+  // ⚡ ফিক্সড ইন্টেলিজেন্ট ক্যাটাগরি ফিল্টার মেথড (কোনো স্ক্রিন ব্লাঙ্ক হবে না)
   void filterByCategory(String category) {
     if (_selectedCategory == category) {
-      _selectedCategory = '';
+      _selectedCategory = ''; // দ্বিতীয়বার ক্লিকে ফিল্টার রিলিজ
     } else {
       _selectedCategory = category;
     }
@@ -191,7 +225,12 @@ class HomeProvider extends ChangeNotifier {
     _selectedListing = null;
     _mapCenter = userLatLng;
     _mapZoom = 12.0;
+
+    // 🎯 মূল যাদু এখানে: আমরা লোকাল ডাটা ফিল্টার ইনস্ট্যান্ট অ্যাপ্লাই করে দেব
     _applyFilters();
+
+    // 🔄 ব্যাকগ্রাউন্ডে অনলাইন থেকে লাইভ নতুন ডাটা নিয়ে আসবে, স্ক্রিন একদম কাঁপবেও না!
+    loadCachedData(isSilent: true);
   }
 
   void searchListings(String query) {
@@ -206,12 +245,16 @@ class HomeProvider extends ChangeNotifier {
           item.name.toLowerCase().contains(_searchQuery) ||
           item.subtitle.toLowerCase().contains(_searchQuery);
 
+      // 🎯 স্লাইডারের দূরত্বের ওপর ভিত্তি করে ফিল্টারিং লজিক
+      double itemKM =
+          double.tryParse(item.distance.replaceAll('km', '')) ?? 0.0;
+      bool matchesRadius = itemKM <= _selectedRadius;
+
       bool matchesCat = _selectedCategory.isEmpty;
       if (!matchesCat) {
         String selected = _selectedCategory.toLowerCase();
         IconData targetIcon = _getIconForCategory(selected);
 
-        // নামের ওপর নির্ভর না করে সরাসরি আইকন টাইপ বা আইটেমের নাম মিলিয়ে ডাটা লোড করা হচ্ছে
         if (selected == 'madrasah' ||
             selected == 'madrasa' ||
             selected == 'mosque') {
@@ -228,80 +271,17 @@ class HomeProvider extends ChangeNotifier {
               item.subtitle.toLowerCase().contains(selected);
         }
       }
-      return matchesSearch && matchesCat;
+      return matchesSearch && matchesRadius && matchesCat;
     }).toList();
+
+    // 🏎️ ডিস্ট্যান্স অনুযায়ী চমৎকার সোর্टिंग (সবচেয়ে কাছের প্লেসগুলো উপরে থাকবে)
+    _filteredListings.sort((a, b) {
+      double distA = double.tryParse(a.distance.replaceAll('km', '')) ?? 999.0;
+      double distB = double.tryParse(b.distance.replaceAll('km', '')) ?? 999.0;
+      return distA.compareTo(distB);
+    });
 
     notifyListeners();
-  }
-
-  // 🛠️ টেস্ট ব্যাকআপ জেনারেটর (যদি হাইভ কোন ডেটা রিটার্ন না করে)
-  void _insertFallbackData() {
-    double baseLat = userLatLng.latitude;
-    double baseLng = userLatLng.longitude;
-
-    var mockList = [
-      {
-        'name': 'Uttara Model School',
-        'subtitle': 'Sector 4, Uttara',
-        'category': 'school',
-        'lat': baseLat + 0.008,
-        'lng': baseLng + 0.009,
-      },
-      {
-        'name': 'Milestone College',
-        'subtitle': 'Sector 11, Uttara',
-        'category': 'school',
-        'lat': baseLat + 0.015,
-        'lng': baseLng - 0.007,
-      },
-      {
-        'name': 'Aga Khan Hospital',
-        'subtitle': 'Sector 10, Uttara',
-        'category': 'hospital',
-        'lat': baseLat - 0.005,
-        'lng': baseLng + 0.012,
-      },
-      {
-        'name': 'Uttara Central Mosque',
-        'subtitle': 'Sector 3, Uttara',
-        'category': 'mosque',
-        'lat': baseLat + 0.003,
-        'lng': baseLng - 0.002,
-      },
-      {
-        'name': 'Baitul Mukarram Madrasah',
-        'subtitle': 'Azampur, Dhaka',
-        'category': 'madrasah',
-        'lat': baseLat - 0.012,
-        'lng': baseLng + 0.005,
-      },
-      {
-        'name': 'Abdullahpur Bus Stand',
-        'subtitle': 'Uttara Highway',
-        'category': 'bus',
-        'lat': baseLat + 0.022,
-        'lng': baseLng + 0.018,
-      },
-      {
-        'name': 'Trust Filling Station',
-        'subtitle': 'House Building',
-        'category': 'petrol',
-        'lat': baseLat + 0.011,
-        'lng': baseLng - 0.011,
-      },
-    ];
-
-    _allListings = mockList.map((e) {
-      String name = e['name'] as String;
-      _listingCoordsMap[name] = LatLng(e['lat'] as double, e['lng'] as double);
-      return ListingModel(
-        name: name,
-        subtitle: e['subtitle'] as String,
-        distance: '2.5km',
-        icon: _getIconForCategory(e['category'] as String),
-        iconColor: _getColorForCategory(e['category'] as String),
-      );
-    }).toList();
   }
 
   IconData _getIconForCategory(String category) {
@@ -311,6 +291,8 @@ class HomeProvider extends ChangeNotifier {
       case 'police':
         return Icons.local_police;
       case 'school':
+      case 'college':
+      case 'university':
         return Icons.school;
       case 'madrasah':
       case 'madrasa':
@@ -332,6 +314,8 @@ class HomeProvider extends ChangeNotifier {
       case 'police':
         return Colors.indigo;
       case 'school':
+      case 'college':
+      case 'university':
         return Colors.orange;
       case 'madrasah':
         return Colors.brown;
