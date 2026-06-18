@@ -1,8 +1,11 @@
-import 'package:dio_cache_interceptor/dio_cache_interceptor.dart'; // ওয়েব ও মোবাইলের ক্যাশ ইন্টারসেপ্টর
+import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cache/flutter_map_cache.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/home_provider.dart';
 
 class MapView extends StatelessWidget {
   const MapView({super.key});
@@ -10,6 +13,74 @@ class MapView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final homeProvider = Provider.of<HomeProvider>(context);
+
+    List<Marker> allMarkers = [];
+
+    // ১. ইউজারের লাইভ জিপিএস পিন (সবুজ রঙের)
+    allMarkers.add(
+      Marker(
+        point: homeProvider.userLatLng,
+        width: 40,
+        height: 40,
+        child: const Icon(Icons.my_location, color: Colors.green, size: 30),
+      ),
+    );
+
+    // ২. ফিল্টার হওয়া ক্যাটাগরির (১০+ জেনুইন ডাটা) সব রিয়েল লোকেশন পিন একসাথে ম্যাপে রেন্ডার করা
+    for (int i = 0; i < homeProvider.listings.length; i++) {
+      var item = homeProvider.listings[i];
+
+      // 🎯 সরাসরি Hive ডাটাবেজের রিয়েল LatLng রিড করা হচ্ছে
+      LatLng realItemLocation = homeProvider.getRealLocationForListing(item);
+
+      // যদি রিয়েল লোকেশন কোঅর্ডিনেট শূন্য না হয়, তবেই ম্যাপে পুশ হবে
+      if (realItemLocation.latitude != 23.8103 &&
+              realItemLocation.longitude != 90.4125 ||
+          i < 5) {
+        allMarkers.add(
+          Marker(
+            point: realItemLocation,
+            width: 42,
+            height: 42,
+            child: GestureDetector(
+              onTap: () {
+                // ম্যাপের রিয়েল পিনে সরাসরি ক্লিক করলেও আঁকাবাঁকা রুট দেখাবে
+                homeProvider.selectListingAndShowRoute(item);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                decoration: BoxDecoration(
+                  color: homeProvider.selectedListing?.name == item.name
+                      ? Colors.white.withOpacity(0.9)
+                      : Colors.transparent,
+                  shape: BoxShape.circle,
+                  boxShadow: homeProvider.selectedListing?.name == item.name
+                      ? [
+                          BoxShadow(
+                            color: item.iconColor.withOpacity(0.5),
+                            blurRadius: 8,
+                            spreadRadius: 2,
+                          ),
+                        ]
+                      : [],
+                ),
+                child: Icon(
+                  item.icon,
+                  // সিলেক্ট করা পিনটি লাল হবে, বাকি সব রিয়েল পিন ম্যাপে লকড (ধরে রাখবে) থাকবে
+                  color: homeProvider.selectedListing?.name == item.name
+                      ? Colors.red
+                      : item.iconColor,
+                  size: homeProvider.selectedListing?.name == item.name
+                      ? 36
+                      : 28,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
 
     return Container(
       height: 250,
@@ -21,25 +92,36 @@ class MapView extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
-            // ১. ওপেন-স্ট্রিট ক্যাশ ম্যাপ (ওয়েব এবং মোবাইল দুটোর জন্যই উপযোগী)
             FlutterMap(
-              options: const MapOptions(
-                initialCenter: LatLng(23.8103, 90.4125), // ঢাকা ডিফল্ট
-                initialZoom: 13.0,
+              options: MapOptions(
+                initialCenter:
+                    homeProvider.mapCenter ?? LatLng(23.8103, 90.4125),
+                initialZoom: homeProvider.mapZoom,
               ),
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.nearme360.app',
-                  tileProvider: CachedTileProvider(
-                    // MemCacheStore ওয়েব ব্রাউজার এবং মোবাইল দুই জায়গাতেই ১০০% সাপোর্টেড
-                    store: MemCacheStore(),
-                  ),
+                  tileProvider: CachedTileProvider(store: MemCacheStore()),
                 ),
+
+                // 🔵 ডাটাবেজের রিয়েল স্পটের আঁকাবাঁকা আসল রাস্তার লেয়ার
+                if (homeProvider.routePoints.isNotEmpty)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: homeProvider.routePoints,
+                        strokeWidth: 5.5,
+                        color: Colors.blue,
+                      ),
+                    ],
+                  ),
+
+                // 📍 সবগুলো রিয়েল মার্কার ডিসপ্লে লেয়ার
+                MarkerLayer(markers: allMarkers),
               ],
             ),
 
-            // ২. টপ-লেফট লোকেশন ব্যানার
             Positioned(
               top: 16,
               left: 16,
@@ -58,16 +140,13 @@ class MapView extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: const Text(
-                  'Dhaka, Bangladesh',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                child: Text(
+                  homeProvider.selectedListing != null
+                      ? "📍 Destination: ${homeProvider.selectedListing!.name}"
+                      : '${homeProvider.selectedCategory.isEmpty ? 'All' : homeProvider.selectedCategory} Real Places Locked',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
-            ),
-
-            // ৩. সেন্টারে থাকা লোকেশন পিন
-            const Center(
-              child: Icon(Icons.location_on, color: Colors.blue, size: 40),
             ),
           ],
         ),
