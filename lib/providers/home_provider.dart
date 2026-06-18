@@ -24,7 +24,7 @@ class HomeProvider extends ChangeNotifier {
   double _selectedRadius = 50.0;
 
   int _currentPage = 0;
-  final int _itemsPerPage = 10;
+  final int _itemsPerPage = 6;
 
   // 🎯 জিপিএস অল পিন ট্র্যাকিং ম্যাপ
   final Map<String, LatLng> _listingCoordsMap = {};
