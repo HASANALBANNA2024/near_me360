@@ -2,7 +2,7 @@ import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cache/flutter_map_cache.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:near_me360/models/listing_model.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/home_provider.dart';
@@ -27,34 +27,53 @@ class MapView extends StatelessWidget {
       ),
     );
 
-    // ২. ফিল্টার হওয়া ক্যাটাগরির সব রিয়েল লোকেশন পিন একসাথে ম্যাপে রেন্ডার করা
-    for (int i = 0; i < homeProvider.listings.length; i++) {
-      var item = homeProvider.listings[i];
+    // ২. 🎯 ফিক্স: পেজের ১০টা না, এপিআই থেকে আসা সব লোকেশন (allListingCoords) একসাথে ম্যাপে পিন করা হচ্ছে!
+    homeProvider.allListingCoords.forEach((name, latLng) {
+      // এই স্পেসিফিক পিনটার নাম দিয়ে listings-এর ভেতর থেকে মেইন মডেল অবজেক্টটা খুঁজে বের করা হচ্ছে
+      // যদি কারেন্ট পেজে নাও থাকে, তাও আমরা একটা ডাইনামিক মডেল জেনারেট করে ম্যাপে আইকন শো করাবো
+      var matchItems = homeProvider.listings.where((l) => l.name == name);
+      var currentItem = matchItems.isNotEmpty ? matchItems.first : null;
 
-      // 🎯 সরাসরি Hive ডাটাবেজের রিয়েল LatLng রিড করা হচ্ছে
-      LatLng realItemLocation = homeProvider.getRealLocationForListing(item);
+      IconData markerIcon = currentItem?.icon ?? Icons.place;
+      Color markerColor = currentItem?.iconColor ?? Colors.red;
+
+      bool isSelected = homeProvider.selectedListing?.name == name;
 
       allMarkers.add(
         Marker(
-          point: realItemLocation,
+          point: latLng,
           width: 42,
           height: 42,
           child: GestureDetector(
             onTap: () {
-              // 🎯 ফিক্স: এখানে context এবং item দুটোই পাস করা হয়েছে
-              homeProvider.selectListingAndShowRoute(context, item);
+              // পিনে ক্লিক করলে ওএসআরএম রুট এবং বটম শীট ওপেন হবে
+              if (currentItem != null) {
+                homeProvider.selectListingAndShowRoute(context, currentItem);
+              } else {
+                // যদি আইটেমটি পরের পেজেও থাকে, তাও রুট ড্র করার জন্য ব্যাকআপ লজিক
+                homeProvider.selectListingAndShowRoute(
+                  context,
+                  ListingModel(
+                    name: name,
+                    subtitle: 'Near Your Area',
+                    distance: 'Calculating...',
+                    icon: markerIcon,
+                    iconColor: markerColor,
+                  ),
+                );
+              }
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 250),
               decoration: BoxDecoration(
-                color: homeProvider.selectedListing?.name == item.name
+                color: isSelected
                     ? Colors.white.withOpacity(0.9)
                     : Colors.transparent,
                 shape: BoxShape.circle,
-                boxShadow: homeProvider.selectedListing?.name == item.name
+                boxShadow: isSelected
                     ? [
                         BoxShadow(
-                          color: item.iconColor.withOpacity(0.5),
+                          color: markerColor.withOpacity(0.5),
                           blurRadius: 8,
                           spreadRadius: 2,
                         ),
@@ -62,17 +81,15 @@ class MapView extends StatelessWidget {
                     : [],
               ),
               child: Icon(
-                item.icon,
-                color: homeProvider.selectedListing?.name == item.name
-                    ? Colors.red
-                    : item.iconColor,
-                size: homeProvider.selectedListing?.name == item.name ? 36 : 28,
+                markerIcon,
+                color: isSelected ? Colors.red : markerColor,
+                size: isSelected ? 36 : 28,
               ),
             ),
           ),
         ),
       );
-    }
+    });
 
     return Container(
       height: 250,
@@ -85,9 +102,10 @@ class MapView extends StatelessWidget {
         child: Stack(
           children: [
             FlutterMap(
+              // 🎯 ফিক্স: প্রোভাইডারের ম্যাপ সেন্টার ও জুম রিড করবে, ক্যাটাগরি ক্লিক করলেই ম্যাপ পজিশন চেঞ্জ হবে
               options: MapOptions(
                 initialCenter:
-                    homeProvider.mapCenter ?? LatLng(23.8103, 90.4125),
+                    homeProvider.mapCenter ?? homeProvider.userLatLng,
                 initialZoom: homeProvider.mapZoom,
               ),
               children: [
@@ -97,7 +115,7 @@ class MapView extends StatelessWidget {
                   tileProvider: CachedTileProvider(store: MemCacheStore()),
                 ),
 
-                // 🔵 ডাটাবেজের রিয়েল স্পটের আঁকাবাঁকা আসল রাস্তার লেয়ার
+                // 🔵 ডাটাবেজের রিয়েল স্পটের আঁকাবাঁকা আসল রাস্তার লেয়ার (OSRM Route)
                 if (homeProvider.routePoints.isNotEmpty)
                   PolylineLayer(
                     polylines: [
@@ -109,7 +127,7 @@ class MapView extends StatelessWidget {
                     ],
                   ),
 
-                // 📍 সবগুলো রিয়েল মার্কার ডিসপ্লে লেয়ার
+                // 📍 সবগুলো রিয়েল মার্কার ডিসপ্লে লেয়ার একসাথে
                 MarkerLayer(markers: allMarkers),
               ],
             ),
@@ -135,7 +153,7 @@ class MapView extends StatelessWidget {
                 child: Text(
                   homeProvider.selectedListing != null
                       ? "📍 Destination: ${homeProvider.selectedListing!.name}"
-                      : '${homeProvider.selectedCategory.isEmpty ? 'All' : homeProvider.selectedCategory} Real Places Locked',
+                      : '${homeProvider.selectedCategory.isEmpty ? 'All' : homeProvider.selectedCategory} Real Places Locked (${homeProvider.totalItems})',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),

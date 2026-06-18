@@ -19,7 +19,7 @@ class NearbyListingCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          // 🎯 ফিক্স: এখানে প্রথমে context এবং পরে listing পাস করা হয়েছে যেন বটম শীট ওপেন হতে পারে
+          // 🎯 ওএসআরএম রুট ম্যাপ এবং নিচ থেকে সুন্দর বটম শীট ওপেন করার জন্য মেথড কল
           Provider.of<HomeProvider>(
             context,
             listen: false,
@@ -37,7 +37,10 @@ class NearbyListingCard extends StatelessWidget {
           subtitle: Text(listing.subtitle),
           trailing: Text(
             listing.distance,
-            style: const TextStyle(color: Colors.grey),
+            style: const TextStyle(
+              color: Colors.grey,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ),

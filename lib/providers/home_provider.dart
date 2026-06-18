@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import 'package:near_me360/services/map_places_service.dart';
 
 import '../models/listing_model.dart';
-import '../services/map_places_service.dart';
 
 class HomeProvider extends ChangeNotifier {
   List<ListingModel> _allListings = [];
@@ -21,18 +21,34 @@ class HomeProvider extends ChangeNotifier {
   List<LatLng> _routePoints = [];
   LatLng? _mapCenter;
   double _mapZoom = 12.0;
-
-  // 🎯 ডিফল্ট রেডিয়াস ৫০ কিলোমিটার সেট করা হলো
   double _selectedRadius = 50.0;
 
-  // 🎯 জিপিএস রুট ট্র্যাক করার জন্য রিয়েল-টাইম ডাটা ম্যাপ
+  int _currentPage = 0;
+  final int _itemsPerPage = 10;
+
+  // 🎯 জিপিএস অল পিন ট্র্যাকিং ম্যাপ
   final Map<String, LatLng> _listingCoordsMap = {};
 
-  List<ListingModel> get listings => _filteredListings;
+  List<ListingModel> get listings {
+    int start = _currentPage * _itemsPerPage;
+    int end = start + _itemsPerPage;
+    if (start >= _filteredListings.length) return [];
+    if (end > _filteredListings.length) end = _filteredListings.length;
+    return _filteredListings.sublist(start, end);
+  }
+
+  // 🗺️ ম্যাপ উইজেটের সব মার্কার একবারে রেন্ডার করার জন্য গেটার
+  Map<String, LatLng> get allListingCoords => _listingCoordsMap;
+
+  int get currentPage => _currentPage + 1;
+  int get totalPages => (_filteredListings.length / _itemsPerPage).ceil();
+  bool get hasNextPage => (_currentPage + 1) < totalPages;
+  bool get hasPreviousPage => _currentPage > 0;
+  int get totalItems => _filteredListings.length;
+
   String get selectedCategory => _selectedCategory;
   bool get isLoading => _isLoading;
   double get selectedRadius => _selectedRadius;
-
   ListingModel? get selectedListing => _selectedListing;
   List<LatLng> get routePoints => _routePoints;
   LatLng? get mapCenter => _mapCenter;
@@ -43,19 +59,26 @@ class HomeProvider extends ChangeNotifier {
     _userPosition?.longitude ?? 90.4125,
   );
 
+  void nextPage() {
+    if (hasNextPage) {
+      _currentPage++;
+      notifyListeners();
+    }
+  }
+
+  void previousPage() {
+    if (hasPreviousPage) {
+      _currentPage--;
+      notifyListeners();
+    }
+  }
+
   void updateRadius(double newRadius) {
     _selectedRadius = newRadius;
-    if (newRadius <= 10) {
-      _mapZoom = 13.5;
-    } else if (newRadius <= 30) {
-      _mapZoom = 12.0;
-    } else {
-      _mapZoom = 10.0;
-    }
+    _mapZoom = newRadius <= 10 ? 13.5 : (newRadius <= 30 ? 12.0 : 10.0);
     loadCachedData(isSilent: true);
   }
 
-  // 🌍 রিয়েল-টাইম লাইভ ফেচ ইঞ্জিন
   Future<void> loadCachedData({bool isSilent = false}) async {
     if (!isSilent) {
       _isLoading = true;
@@ -63,7 +86,6 @@ class HomeProvider extends ChangeNotifier {
     }
 
     try {
-      // 🛰️ ইউজারের বর্তমান জিপিএস লোকেশন নেওয়া হচ্ছে
       try {
         _userPosition = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.medium,
@@ -75,11 +97,12 @@ class HomeProvider extends ChangeNotifier {
       }
 
       List<dynamic> list = [];
-
-      // 🎯 ফিক্স: লোকাল ফেক ক্যাশের উপর নির্ভর না করে, ক্যাটাগরি সিলেক্টেড থাকলেই
-      // সরাসরি লাইভ Overpass API থেকে রিয়েল ডাটা তুলে আনা হবে।
       if (_selectedCategory.isNotEmpty) {
-        print("📡 Fetching Live Data for Category: $_selectedCategory");
+        // list = await MapPlacesService.fetchLivePlaces(
+        //   userLocation: userLatLng,
+        //   radiusInKm: _selectedRadius,
+        //   category: _selectedCategory,
+        // );
         list = await MapPlacesService.fetchLivePlaces(
           userLocation: userLatLng,
           radiusInKm: _selectedRadius,
@@ -93,16 +116,16 @@ class HomeProvider extends ChangeNotifier {
         double lat = double.tryParse(e['latitude']?.toString() ?? '0.0') ?? 0.0;
         double lng =
             double.tryParse(e['longitude']?.toString() ?? '0.0') ?? 0.0;
-        String name = e['name'] ?? '';
-
-        // ক্যাটাগরি এপিআই থেকে ব্ল্যাঙ্ক আসলে সিলেক্টেড ট্যাগ ব্যাকআপ হিসেবে কাজ করবে
+        String name = e['name'] ?? 'Unknown Place';
+        String subtitle = e['subtitle'] ?? 'Near Your Area';
         String categoryRaw = e['category'] ?? _selectedCategory;
 
-        if (name.isNotEmpty && lat != 0.0 && lng != 0.0) {
+        // 🗺️ সব লোকেশন জিপিএস কোঅর্ডিনেট ট্র্যাকিং ম্যাপে পুশ হচ্ছে
+        if (name != 'Unknown Place' && lat != 0.0 && lng != 0.0) {
           _listingCoordsMap[name] = LatLng(lat, lng);
         }
 
-        // 📏 লাইভ দূরত্ব ক্যালকুলেশন লজিক
+        // 📏 নিখুঁত লাইভ দূরত্ব ক্যালকুলেশন
         String finalDistance = "0.1km";
         if (_userPosition != null && lat != 0.0 && lng != 0.0) {
           double meters = Geolocator.distanceBetween(
@@ -111,20 +134,21 @@ class HomeProvider extends ChangeNotifier {
             lat,
             lng,
           );
-          finalDistance = "${(meters / 1000).toStringAsFixed(1)}km";
-        } else if (e['distance'] != null) {
-          finalDistance = e['distance'];
+          finalDistance = meters >= 1000
+              ? "${(meters / 1000).toStringAsFixed(1)}km"
+              : "${meters.toStringAsFixed(0)}m";
         }
 
         return ListingModel(
           name: name,
-          subtitle: e['subtitle'] ?? 'Near Your Area',
+          subtitle: subtitle,
           distance: finalDistance,
           icon: _getIconForCategory(categoryRaw),
           iconColor: _getColorForCategory(categoryRaw),
         );
       }).toList();
 
+      _currentPage = 0;
       _applyFilters();
     } catch (e) {
       print("Error loading data: $e");
@@ -135,19 +159,13 @@ class HomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 🏎️ 🎯 ওএসআরএম রিয়েল ড্রাইビング রাউটিং এপিআই
   Future<void> selectListingAndShowRoute(
     BuildContext context,
     ListingModel item,
   ) async {
     _selectedListing = item;
-
     LatLng? destLocation = _listingCoordsMap[item.name];
-    if (destLocation == null || destLocation.latitude == 0.0) {
-      destLocation = getRealLocationForListing(item);
-    }
-
-    if (destLocation.latitude == 0.0 || destLocation.longitude == 0.0) return;
+    if (destLocation == null || destLocation.latitude == 0.0) return;
 
     _mapCenter = destLocation;
     _mapZoom = 14.5;
@@ -174,14 +192,10 @@ class HomeProvider extends ChangeNotifier {
     } catch (e) {
       _routePoints = [userLatLng, _mapCenter!];
     }
-
     notifyListeners();
-
-    // 🗺️ আইটেমে ক্লিক করলে নিচ থেকে সুন্দর বটম শীট ভেসে উঠবে
     _showDetailsBottomSheet(context, item);
   }
 
-  // 🔽 সুন্দর বটম শীট উইজেট মেথড
   void _showDetailsBottomSheet(BuildContext context, ListingModel item) {
     showModalBottomSheet(
       context: context,
@@ -282,23 +296,13 @@ class HomeProvider extends ChangeNotifier {
     );
   }
 
-  LatLng getRealLocationForListing(ListingModel item) {
-    if (_listingCoordsMap.containsKey(item.name)) {
-      return _listingCoordsMap[item.name]!;
-    }
-    return userLatLng;
-  }
-
   void filterByCategory(String category) {
-    if (_selectedCategory == category) {
-      _selectedCategory = '';
-    } else {
-      _selectedCategory = category;
-    }
+    _selectedCategory = _selectedCategory == category ? '' : category;
     _routePoints = [];
     _selectedListing = null;
     _mapCenter = userLatLng;
     _mapZoom = 12.0;
+    _currentPage = 0;
 
     _applyFilters();
     loadCachedData(isSilent: true);
@@ -306,31 +310,31 @@ class HomeProvider extends ChangeNotifier {
 
   void searchListings(String query) {
     _searchQuery = query.toLowerCase();
+    _currentPage = 0;
     _applyFilters();
   }
 
-  // 🧠 ১০০% নিখুঁত ডিস্ট্যান্স ফিল্টারিং ও সোর্টিং ইঞ্জিন (যা ডাটা ড্রপ করবে না)
   void _applyFilters() {
     List<ListingModel> temp = [];
-
     for (var item in _allListings) {
       final matchesSearch =
           item.name.toLowerCase().contains(_searchQuery) ||
           item.subtitle.toLowerCase().contains(_searchQuery);
 
-      // কিমি স্ট্রিং ক্লিন করে ডাবল ফরমেটে কনভার্ট করা
       double itemKM =
-          double.tryParse(item.distance.replaceAll('km', '').trim()) ?? 0.0;
+          double.tryParse(
+            item.distance.replaceAll('km', '').replaceAll('m', '').trim(),
+          ) ??
+          0.0;
+      if (item.distance.contains('m') && !item.distance.contains('km')) {
+        itemKM = itemKM / 1000;
+      }
 
-      // রেডিয়াসের নিখুঁত ম্যাপিং কন্ডিশন
       bool matchesRadius = itemKM == 0.0 || itemKM <= _selectedRadius;
-
       bool matchesCat = _selectedCategory.isEmpty;
       if (!matchesCat) {
         String selected = _selectedCategory.toLowerCase().trim();
         IconData targetIcon = _getIconForCategory(selected);
-
-        // আইকন ম্যাচিং অথবা ডিরেক্ট টেক্সট কন্টেইন চেক
         matchesCat =
             item.icon == targetIcon ||
             item.name.toLowerCase().contains(selected) ||
@@ -342,12 +346,19 @@ class HomeProvider extends ChangeNotifier {
       }
     }
 
-    // 🏎️ 🎯 দূরত্ব অনুযায়ী শর্টেস্ট সোর্টিং (মিনিমাম ডিসট্যান্স সবার ওপরে থাকবে)
     temp.sort((a, b) {
       double distA =
-          double.tryParse(a.distance.replaceAll('km', '').trim()) ?? 999.0;
+          double.tryParse(
+            a.distance.replaceAll('km', '').replaceAll('m', '').trim(),
+          ) ??
+          999.0;
+      if (a.distance.contains('m') && !a.distance.contains('km')) distA /= 1000;
       double distB =
-          double.tryParse(b.distance.replaceAll('km', '').trim()) ?? 999.0;
+          double.tryParse(
+            b.distance.replaceAll('km', '').replaceAll('m', '').trim(),
+          ) ??
+          999.0;
+      if (b.distance.contains('m') && !b.distance.contains('km')) distB /= 1000;
       return distA.compareTo(distB);
     });
 
