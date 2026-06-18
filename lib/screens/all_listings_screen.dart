@@ -22,8 +22,24 @@ class AllListingsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: Text(
-          '${homeProvider.selectedCategory.isEmpty ? 'All' : homeProvider.selectedCategory} - All Places (${homeProvider.totalItems})',
+        // 🎯 অ্যাপবার কন্টেন্ট রেসপন্সিভ করা হলো (ওয়েবে সর্বোচ্চ ১১০০px উইডথ এবং সেন্টারিং)
+        title: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 1100),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    '${homeProvider.selectedCategory.isEmpty ? 'All' : homeProvider.selectedCategory} - All Places (${homeProvider.totalItems})',
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -38,16 +54,12 @@ class AllListingsScreen extends StatelessWidget {
               itemBuilder: (context, index) {
                 final name = allItems[index];
 
-                // 🎯 ফিক্স (লাল স্ক্রিন এরর দূরীকরণ):
-                // প্রথম ১০টার লিমিটেড 'listings' এ না খুঁজে, গ্লোবাল '_allListings' এর সাথে ম্যাচ করার ব্যাকআপ মেকানিজম।
-                // এটি থাকলে অ্যাপ আর কখনো 'No element' এরর দিয়ে ক্র্যাশ করবে না।
                 ListingModel item;
                 try {
                   item = homeProvider.listings.firstWhere(
                     (l) => l.name == name,
                   );
                 } catch (_) {
-                  // যদি কারেন্ট পেজের বাইরে থাকে, তবে ডাইনামিক সেফ মডেল তৈরি হবে
                   item = ListingModel(
                     name: name,
                     subtitle: 'Near Your Area',
@@ -57,9 +69,19 @@ class AllListingsScreen extends StatelessWidget {
                   );
                 }
 
+                // 🎯 কন্ডিশনাল চেকিং: ডাটা 'Near Your Area' বা ফাঁকা থাকলে হাইড করার জন্য
+                final bool hasSubtitle =
+                    item.subtitle.isNotEmpty &&
+                    item.subtitle != 'Near Your Area' &&
+                    item.subtitle != 'Near Your Location';
+
+                final bool hasDistance =
+                    item.distance.isNotEmpty &&
+                    item.distance != 'Locked' &&
+                    item.distance != 'Calculating...';
+
                 return Center(
                   child: Container(
-                    // 🎯 ওয়েবের জন্য ম্যাক্সিমাম উইডথ ১১০০ পিক্সেল এবং সেন্টারিং, মোবাইলে ফুল উইডথ
                     constraints: const BoxConstraints(maxWidth: 1100),
                     child: Card(
                       margin: const EdgeInsets.only(bottom: 10),
@@ -80,8 +102,32 @@ class AllListingsScreen extends StatelessWidget {
                             item.name,
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          subtitle: Text(item.subtitle),
-                          trailing: const Icon(Icons.map, color: Colors.blue),
+                          // 🎯 সাবটাইটেল/অ্যাড্রেস থাকলে দেখাবে, না থাকলে উইজেট গায়েব হয়ে যাবে
+                          subtitle: hasSubtitle
+                              ? Text(
+                                  item.subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                )
+                              : null,
+                          // 🎯 ডিস্ট্যান্স ভ্যালিড ডাটা হলে ট্রেইলিং-এ দেখাবে, না থাকলে আইকন দেখাবে
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (hasDistance) ...[
+                                Text(
+                                  item.distance,
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
+                              const Icon(Icons.map, color: Colors.blue),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -92,7 +138,7 @@ class AllListingsScreen extends StatelessWidget {
     );
   }
 
-  // 🎯 ৭৫% - ৮৫% হাইটের কাস্টম রেসপন্সিভ এবং ক্র্যাশ-ফ্রি ম্যাপ পপআপ শীট
+  // 🎯 ৭৫% - ৮৫% হাইটের কাস্টম রেসপন্সিভ এবং ক্র্যাশ-ফ্রি ম্যাপ পপআপ শীট (As It Is)
   void _showResponsiveMapSheet(
     BuildContext context,
     HomeProvider homeProvider,
@@ -101,7 +147,6 @@ class AllListingsScreen extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final bool isMobile = screenWidth < 800;
 
-    // মোবাইলে ৮৫% এবং ওয়েবে ৭৫% পারফেক্ট রেসপন্সিভ হাইট
     double sheetHeight = isMobile
         ? (screenHeight * 0.85)
         : (screenHeight * 0.75);
@@ -112,10 +157,8 @@ class AllListingsScreen extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (context) {
         return Center(
-          // 🎯 ওয়েবে শীটটিকে স্ক্রিনের মাঝখানে রাখার জন্য
           child: Container(
             height: sheetHeight,
-            // 🎯 আপনার রিকোয়ারমেন্ট: ওয়েবে সর্বোচ্চ ১১০০ পিক্সেল উইডথ, মোবাইলে রেসপন্সিভ ফুল স্ক্রিন
             constraints: const BoxConstraints(maxWidth: 1100),
             width: double.infinity,
             decoration: BoxDecoration(
@@ -127,7 +170,6 @@ class AllListingsScreen extends StatelessWidget {
             ),
             child: Stack(
               children: [
-                // 🗺️ ম্যাপ লেয়ার
                 ClipRRect(
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(24),
@@ -137,7 +179,6 @@ class AllListingsScreen extends StatelessWidget {
                     builder: (context, provider, child) {
                       List<Marker> markers = [];
 
-                      // ইউজারের লাইভ জিপিএস লোকেশন পিন
                       markers.add(
                         Marker(
                           point: provider.userLatLng,
@@ -151,7 +192,6 @@ class AllListingsScreen extends StatelessWidget {
                         ),
                       );
 
-                      // সমস্ত এপিআই পিন একসাথে রেন্ডার
                       provider.allListingCoords.forEach((name, latLng) {
                         bool isSelected =
                             provider.selectedListing?.name == name;
@@ -184,7 +224,6 @@ class AllListingsScreen extends StatelessWidget {
                               store: MemCacheStore(),
                             ),
                           ),
-                          // 🔵 OSRM রুট পাথ লেয়ার
                           if (provider.routePoints.isNotEmpty)
                             PolylineLayer(
                               polylines: [
@@ -201,8 +240,6 @@ class AllListingsScreen extends StatelessWidget {
                     },
                   ),
                 ),
-
-                // 🔝 শীট ড্র্যাগ ইন্ডিকেটর নচ
                 Positioned(
                   top: 12,
                   left: 0,
@@ -218,8 +255,6 @@ class AllListingsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-
-                // ❌ ক্লোজ বাটন
                 Positioned(
                   top: 16,
                   right: 16,
