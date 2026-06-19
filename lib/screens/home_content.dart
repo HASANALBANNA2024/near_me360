@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:near_me360/providers/home_provider.dart'; // ✅ হোম প্রোভাইডার ইমপোর্ট
-import 'package:provider/provider.dart'; // ✅ প্রোভাইডার ইমপোর্ট
+import 'package:near_me360/providers/home_provider.dart';
+import 'package:provider/provider.dart';
 
-import '../widgets/alerts_panel.dart';
 import '../widgets/category_grid.dart';
 import '../widgets/map_view.dart';
 import '../widgets/nearby_listing_card.dart';
-import '../widgets/quick_finder_panel.dart';
 import '../widgets/recent_searches_panel.dart';
 import '../widgets/settings_panel.dart';
 import '../widgets/stats_panel.dart';
@@ -82,11 +80,7 @@ class HomeContent extends StatelessWidget {
                                   ),
                                 ],
                               ),
-                        const SizedBox(height: 16),
 
-                        const QuickFinderPanel(),
-                        const SizedBox(height: 16),
-                        const AlertsPanel(),
                         const SizedBox(height: 16),
                         const StatsPanel(),
                         const SizedBox(height: 16),
@@ -104,14 +98,6 @@ class HomeContent extends StatelessWidget {
                               child: Column(
                                 children: [
                                   const CategoryGrid(),
-                                  const SizedBox(height: 16),
-                                  Row(
-                                    children: const [
-                                      Expanded(child: QuickFinderPanel()),
-                                      SizedBox(width: 16),
-                                      Expanded(child: AlertsPanel()),
-                                    ],
-                                  ),
                                   const SizedBox(height: 16),
                                   Row(
                                     children: const [
