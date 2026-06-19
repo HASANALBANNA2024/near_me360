@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:hive/hive.dart'; // ✅ Hive যুক্ত করা হলো
+import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:near_me360/services/map_places_service.dart';
@@ -30,12 +30,10 @@ class HomeProvider extends ChangeNotifier {
 
   final Map<String, LatLng> _listingCoordsMap = {};
 
-  // 🕒 রিসেন্ট সার্চের জন্য নতুন মেমোরি লিস্ট এবং Hive বক্স গেটার
-  List<String> _recentSearchesList = [];
-  List<String> get recentSearches => _recentSearchesList;
-  final recentBox = Hive.box(
-    'recent_searches',
-  ); // ✅ নিশ্চিত করুন main.dart-এ এই বক্স ওপেন করা আছে
+  // 🕒 রিসেন্ট সার্চের জন্য সেফ অবজেক্ট লিস্ট (নাম, ল্যাট, লন সহ)
+  List<Map<String, dynamic>> _recentSearchesList = [];
+  List<Map<String, dynamic>> get recentSearches => _recentSearchesList;
+  final recentBox = Hive.box('recent_searches');
 
   List<ListingModel> get listings {
     int start = _currentPage * _itemsPerPage;
@@ -85,17 +83,28 @@ class HomeProvider extends ChangeNotifier {
     loadCachedData(isSilent: true);
   }
 
-  // 📥 ক্যাশ ও ডাটা লোড মেথড
+  // 📥 ক্যাশ ও লাইভ ডাটা লোড মেথড
   Future<void> loadCachedData({bool isSilent = false}) async {
     if (!isSilent && !_isCustomSearching) {
       _isLoading = true;
       notifyListeners();
     }
 
-    // 🕒 প্রথমবার অ্যাপ চালুর সময় Hive থেকে পুরোনো সার্চ হিস্ট্রি মেমোরিতে লোড করা হচ্ছে
+    // 🔒 🛡️ ক্রাশ প্রোটেকশন চেক: পুরোনো ডাটা ফরম্যাট মিসম্যাচ ফিক্স
     final List<dynamic>? cachedSearches = recentBox.get('searches');
     if (cachedSearches != null) {
-      _recentSearchesList = List<String>.from(cachedSearches);
+      try {
+        _recentSearchesList = cachedSearches
+            .where(
+              (e) => e is Map,
+            ) // পুরোনো কোনো Plain String থাকলে সেটিকে বাদ দিয়ে দিবে
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+      } catch (e) {
+        print("Hive Data Safe Migration Error: $e");
+        _recentSearchesList =
+            []; // সমস্যা হলে ডাটা রিমুভ করে ফ্লিট ব্লক হওয়া আটকাবে
+      }
     }
 
     try {
@@ -166,69 +175,33 @@ class HomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 💾 নতুন সার্চ হিস্ট্রি Hive-এ রাইট করার জন্য মেথড
-  void addToRecentSearches(String query) {
-    if (query.trim().isEmpty) return;
+  // 💾 লোকেশন Hive-এ অবজেক্ট আকারে সেভ (লাস্ট ৫০ টি)
+  void saveSelectedLocationToHive(String name, double lat, double lng) {
+    if (name.trim().isEmpty || lat == 0.0 || lng == 0.0) return;
 
-    _recentSearchesList.remove(query); // ডুপ্লিকেট ফিক্স
-    _recentSearchesList.insert(0, query); // একদম উপরে পুশ
+    _recentSearchesList.removeWhere((element) => element['name'] == name);
 
-    if (_recentSearchesList.length > 5) {
-      _recentSearchesList.removeLast(); // টপ ৫টা হিস্ট্রি ব্যাকআপ রাখবে
+    _recentSearchesList.insert(0, {
+      'name': name,
+      'latitude': lat,
+      'longitude': lng,
+    });
+
+    if (_recentSearchesList.length > 50) {
+      _recentSearchesList.removeLast();
     }
 
-    recentBox.put('searches', _recentSearchesList); // Hive সেভ
+    recentBox.put('searches', _recentSearchesList);
     notifyListeners();
   }
 
-  // 🗑️ পুরো সার্চ হিস্ট্রি ডিলিট মেথড
   void clearRecentSearches() {
     _recentSearchesList.clear();
     recentBox.delete('searches');
     notifyListeners();
   }
 
-  // 🔍 কাস্টম সার্চবারে কিছু সার্চ করলে রান হবে
-  void searchCustomQuery(String query) {
-    if (query.trim().isEmpty) return;
-
-    _routePoints = [];
-    _selectedListing = null;
-    _mapCenter = userLatLng;
-    _mapZoom = 12.0;
-    _currentPage = 0;
-
-    _isCustomSearching = true;
-    _selectedCategory = query;
-
-    addToRecentSearches(query); // 🚀 সার্চ করলে অটো রিসেন্টে সেভ হবে
-
-    notifyListeners();
-    loadCachedData(isSilent: false);
-  }
-
-  // 🎯 মেইন ক্যাটাগরি গ্রিডে ক্লিক করলে রান হবে
-  void filterByCategory(String category) {
-    _selectedCategory = _selectedCategory == category ? '' : category;
-    _routePoints = [];
-    _selectedListing = null;
-    _mapCenter = userLatLng;
-    _mapZoom = 12.0;
-    _currentPage = 0;
-
-    _isCustomSearching = _selectedCategory.isNotEmpty;
-
-    if (_selectedCategory.isNotEmpty) {
-      addToRecentSearches(
-        category,
-      ); // 🚀 ক্যাটাগরি ফিল্টার করলেও রিসেন্টে সেভ হবে
-    }
-
-    _applyFilters();
-    notifyListeners();
-    loadCachedData(isSilent: false);
-  }
-
+  // 🚀 কার্ড বা পিনে ক্লিক করলে লোকেশন সেভ করবে এবং রুট জেনারেট করবে
   Future<void> selectListingAndShowRoute(
     BuildContext context,
     ListingModel item,
@@ -240,9 +213,35 @@ class HomeProvider extends ChangeNotifier {
     _mapCenter = destLocation;
     _mapZoom = 14.5;
 
-    /// after result selectin to receive to hive box for display on recent search
-    addToRecentSearches(item.name);
+    // 🎯 নাম ও ল্যাট-লোনসহ অফলাইনে স্টোর হচ্ছে
+    saveSelectedLocationToHive(
+      item.name,
+      destLocation.latitude,
+      destLocation.longitude,
+    );
 
+    await _fetchRoute(destLocation);
+  }
+
+  // 🕒 রিসেন্ট প্যানেল বা সি-মোর পপ-আপ থেকে ক্লিক করলে অফলাইন ডাটা নিয়ে সরাসরি ম্যাপ মুভ করবে
+  Future<void> selectRecentOfflineLocation(String name, LatLng location) async {
+    _selectedListing = ListingModel(
+      name: name,
+      subtitle: 'Saved Location',
+      distance: 'Calculating...',
+      icon: Icons.place,
+      iconColor: Colors.redAccent,
+    );
+
+    _mapCenter = location;
+    _mapZoom = 14.5;
+    _listingCoordsMap[name] = location;
+
+    notifyListeners();
+    await _fetchRoute(location);
+  }
+
+  Future<void> _fetchRoute(LatLng destLocation) async {
     final url =
         'https://router.project-osrm.org/route/v1/driving/'
         '${userLatLng.longitude},${userLatLng.latitude};${destLocation.longitude},${destLocation.latitude}'
@@ -266,6 +265,32 @@ class HomeProvider extends ChangeNotifier {
       _routePoints = [userLatLng, _mapCenter!];
     }
     notifyListeners();
+  }
+
+  void searchCustomQuery(String query) {
+    if (query.trim().isEmpty) return;
+    _routePoints = [];
+    _selectedListing = null;
+    _mapCenter = userLatLng;
+    _mapZoom = 12.0;
+    _currentPage = 0;
+    _isCustomSearching = true;
+    _selectedCategory = query;
+    notifyListeners();
+    loadCachedData(isSilent: false);
+  }
+
+  void filterByCategory(String category) {
+    _selectedCategory = _selectedCategory == category ? '' : category;
+    _routePoints = [];
+    _selectedListing = null;
+    _mapCenter = userLatLng;
+    _mapZoom = 12.0;
+    _currentPage = 0;
+    _isCustomSearching = _selectedCategory.isNotEmpty;
+    _applyFilters();
+    notifyListeners();
+    loadCachedData(isSilent: false);
   }
 
   void searchListings(String query) {
