@@ -10,31 +10,42 @@ import '../widgets/settings_panel.dart';
 import '../widgets/stats_panel.dart';
 import 'all_listings_screen.dart';
 
-class HomeContent extends StatelessWidget {
+class HomeContent extends StatefulWidget {
   const HomeContent({super.key});
+
+  @override
+  State<HomeContent> createState() => _HomeContentState();
+}
+
+class _HomeContentState extends State<HomeContent> {
+  @override
+  void initState() {
+    super.initState();
+    // 🌍 অ্যাপ ওপেন হওয়ার পর ফার্স্ট-টাইম ডাটা লোড ও জিপিএস লক করবে
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<HomeProvider>(context, listen: false).loadCachedData();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final bool isMobile = screenWidth < 800;
 
-    // ⚡ Hive ডাটাবেজ থেকে প্রোভাইডারের মাধ্যমে আসা লাইভ ডাটা লিস্ট
     final homeProvider = Provider.of<HomeProvider>(context);
     final listings = homeProvider.listings;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      // 🎯 কন্টেন্ট এবং ইন্ডিকেটর একসাথ করার জন্য পুরো বডি Stack করা হলো
       body: Stack(
         children: [
           // -----------------------------------------------------------------
-          // 📦 ১. মূল ইউআই কন্টেন্ট লেয়ার
-          // 🎯 ম্যাজিক: ক্যাটাগরি বা কাস্টম সার্চ চললে ফুল স্ক্রিন লোডার ইউআই আটকে রাখবে না
+          // 📦 ১. মূল ইউআই কন্টেন্ট লেয়ার (🔒 কড়া লক কন্ডিশন: নো ফ্লিকার!)
           // -----------------------------------------------------------------
-          homeProvider.isLoading && !homeProvider.isCustomSearching
-              ? const Center(
-                  child: CircularProgressIndicator(),
-                ) // একদম ফার্স্ট টাইম ফুল লোডিং স্টেট
+          homeProvider.isLoading &&
+                  homeProvider.totalItems == 0 &&
+                  !homeProvider.isCustomSearching
+              ? const Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -50,7 +61,6 @@ class HomeContent extends StatelessWidget {
                         const CategoryGrid(),
                         const SizedBox(height: 20),
 
-                        // 🎯 ফিক্স: এখানে context পাস করা হয়েছে
                         _buildSectionTitle(
                           context,
                           'Nearby Listings (${homeProvider.totalItems})',
@@ -72,8 +82,6 @@ class HomeContent extends StatelessWidget {
                                             NearbyListingCard(listing: item),
                                       )
                                       .toList(),
-
-                                  // 🎯 মোবাইলের জন্য পেজিনেশন কন্ট্রোলার (লিস্টের ঠিক নিচে)
                                   _buildPaginationController(
                                     context,
                                     homeProvider,
@@ -84,7 +92,7 @@ class HomeContent extends StatelessWidget {
                         const SizedBox(height: 16),
                         const StatsPanel(),
                         const SizedBox(height: 16),
-                        const RecentSearchesPanel(),
+                        const RecentSearchesPanel(), // ক্লিন রিসেন্ট সার্চ
                         const SizedBox(height: 16),
                         const SettingsPanel(),
                       ] else ...[
@@ -92,18 +100,21 @@ class HomeContent extends StatelessWidget {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            /// category, quick finder and graph
                             Expanded(
                               flex: 2,
                               child: Column(
                                 children: [
                                   const CategoryGrid(),
-                                  const SizedBox(height: 16),
+                                  const SizedBox(height: 20),
                                   Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: const [
                                       Expanded(child: StatsPanel()),
                                       SizedBox(width: 16),
-                                      Expanded(child: RecentSearchesPanel()),
+                                      Expanded(
+                                        child: RecentSearchesPanel(),
+                                      ), // ফুল রেসপনসিভ প্যানেল
                                     ],
                                   ),
                                 ],
@@ -111,13 +122,11 @@ class HomeContent extends StatelessWidget {
                             ),
                             const SizedBox(width: 20),
 
-                            /// listing quick settings
                             Expanded(
                               flex: 1,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // 🎯 ফিক্স: এখানে context পাস করা হয়েছে
                                   _buildSectionTitle(
                                     context,
                                     'Nearby Listings (${homeProvider.totalItems})',
@@ -140,8 +149,6 @@ class HomeContent extends StatelessWidget {
                                                   ),
                                                 )
                                                 .toList(),
-
-                                            // 🎯 ওয়েব/বড় স্ক্রিনের জন্য পেজিনেশন কন্ট্রোলার (লিস্টের ঠিক নিচে)
                                             _buildPaginationController(
                                               context,
                                               homeProvider,
@@ -161,8 +168,7 @@ class HomeContent extends StatelessWidget {
                 ),
 
           // -----------------------------------------------------------------
-          // 🚀 ২. লাইটওয়েট ম্যাজিক ইন্ডিকেটর (সবার উপরে ভেসে উঠবে)
-          // 🎯 যেকোনো ক্যাটাগরি বা Others কাস্টম সার্চে ক্লিক করলে রেজাল্ট আসার আগ পর্যন্ত সচল থাকবে
+          // 🚀 ২. টপ লাক্সারি লাইটওয়েট লিনিয়ার ইন্ডিকেটর
           // -----------------------------------------------------------------
           if (homeProvider.isCustomSearching)
             Positioned(
@@ -171,13 +177,12 @@ class HomeContent extends StatelessWidget {
               right: 0,
               child: LinearProgressIndicator(
                 backgroundColor: Colors.transparent,
-                // ক্যাটাগরি ওয়াইজ কালার ডাইনামিকালি সেট হবে
                 valueColor: AlwaysStoppedAnimation<Color>(
                   homeProvider.getColorForCategory(
                     homeProvider.selectedCategory,
                   ),
                 ),
-                minHeight: 3, // একদম স্লিম ও লাক্সারি লুক
+                minHeight: 3,
               ),
             ),
         ],
@@ -185,7 +190,6 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  // 🎯 ফিক্সড মেথড: প্যারামিটারে BuildContext context যুক্ত করা হয়েছে যেন See All বাটন কাজ করে
   Widget _buildSectionTitle(BuildContext context, String title) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -209,7 +213,6 @@ class HomeContent extends StatelessWidget {
     );
   }
 
-  // 🎯 নেক্সট এবং প্রিভিয়াস ১০টি ডাটা কন্ট্রোল করার পেজিনেশন উইজেট
   Widget _buildPaginationController(
     BuildContext context,
     HomeProvider homeProvider,
@@ -217,10 +220,8 @@ class HomeContent extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 8),
       child: Row(
-        mainAxisAlignment:
-            MainAxisAlignment.end, // 🎯 বাটনগুলোকে একদম ডানপাশে পুশ করবে
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // 📄 কারেন্ট পেজ কাউন্টার
           Text(
             "Page ${homeProvider.currentPage} of ${homeProvider.totalPages}",
             style: TextStyle(
@@ -230,12 +231,10 @@ class HomeContent extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-
-          // ⬅️ Previous Button
           IconButton(
             onPressed: homeProvider.hasPreviousPage
                 ? () => homeProvider.previousPage()
-                : null, // প্রথম পেজে থাকলে বাটন ডিজেবল থাকবে
+                : null,
             icon: const Icon(Icons.arrow_back_ios_new, size: 14),
             style: IconButton.styleFrom(
               backgroundColor: homeProvider.hasPreviousPage
@@ -248,12 +247,10 @@ class HomeContent extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 6),
-
-          // ➡️ Next Button
           IconButton(
             onPressed: homeProvider.hasNextPage
                 ? () => homeProvider.nextPage()
-                : null, // শেষ পেজে থাকলে বাটন ডিজেবল থাকবে
+                : null,
             icon: const Icon(Icons.arrow_forward_ios, size: 14),
             style: IconButton.styleFrom(
               backgroundColor: homeProvider.hasNextPage

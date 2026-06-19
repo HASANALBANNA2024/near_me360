@@ -19,18 +19,18 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _bodyContents = const [
-    HomeContent(),
-    EmergencyContent(),
-    EducationContent(),
-    TransportContent(),
+  // 🔒 ফিক্সড লাল দাগ এরর: এখান থেকে মেইন const তুলে দিয়ে ইন্ডিভিজুয়াল দেওয়া হয়েছে
+  final List<Widget> _bodyContents = [
+    const HomeContent(), // StatefulWidget হওয়ার কারণে এটি এখন স্বাধীন ডাইনামিক উইজেট
+    const EmergencyContent(),
+    const EducationContent(),
+    const TransportContent(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-
       bottomNavigationBar: ResponsiveBuilder(
         mobile: BottomNavigation(
           currentIndex: _currentIndex,
@@ -47,14 +47,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
         ),
-
         desktop: Row(
           children: [
             SidebarNavigation(
               currentIndex: _currentIndex,
               onIndexChanged: (index) => setState(() => _currentIndex = index),
             ),
-
             Expanded(
               child: Container(
                 color: Theme.of(context).scaffoldBackgroundColor,

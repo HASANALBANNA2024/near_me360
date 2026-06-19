@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:hive/hive.dart'; // ✅ Hive যুক্ত করা হলো
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:near_me360/services/map_places_service.dart';
@@ -15,8 +16,6 @@ class HomeProvider extends ChangeNotifier {
   String _selectedCategory = '';
   String _searchQuery = '';
   bool _isLoading = true;
-
-  // 🎯 যেকোনো ক্যাটাগরি বা কাস্টম সার্চের ক্ষেত্রে হালকা টপ ইন্ডিকেশন শো করার ফ্ল্যাগ
   bool _isCustomSearching = false;
   Position? _userPosition;
 
@@ -29,8 +28,14 @@ class HomeProvider extends ChangeNotifier {
   int _currentPage = 0;
   final int _itemsPerPage = 6;
 
-  // 🎯 জিপিএস অল পিন ট্র্যাকিং ম্যাপ
   final Map<String, LatLng> _listingCoordsMap = {};
+
+  // 🕒 রিসেন্ট সার্চের জন্য নতুন মেমোরি লিস্ট এবং Hive বক্স গেটার
+  List<String> _recentSearchesList = [];
+  List<String> get recentSearches => _recentSearchesList;
+  final recentBox = Hive.box(
+    'recent_searches',
+  ); // ✅ নিশ্চিত করুন main.dart-এ এই বক্স ওপেন করা আছে
 
   List<ListingModel> get listings {
     int start = _currentPage * _itemsPerPage;
@@ -40,19 +45,14 @@ class HomeProvider extends ChangeNotifier {
     return _filteredListings.sublist(start, end);
   }
 
-  // 🗺️ ম্যাপ উইজেটের সব মার্কার একবারে রেন্ডার করার জন্য গেটার
   Map<String, LatLng> get allListingCoords => _listingCoordsMap;
-
   int get currentPage => _currentPage + 1;
   int get totalPages => (_filteredListings.length / _itemsPerPage).ceil();
   bool get hasNextPage => (_currentPage + 1) < totalPages;
   bool get hasPreviousPage => _currentPage > 0;
   int get totalItems => _filteredListings.length;
-
   String get selectedCategory => _selectedCategory;
   bool get isLoading => _isLoading;
-
-  // 🎯 ইউআই উইজেট থেকে হালকা ইন্ডিকেটর চেক করার গেটার
   bool get isCustomSearching => _isCustomSearching;
   double get selectedRadius => _selectedRadius;
   ListingModel? get selectedListing => _selectedListing;
@@ -85,11 +85,17 @@ class HomeProvider extends ChangeNotifier {
     loadCachedData(isSilent: true);
   }
 
+  // 📥 ক্যাশ ও ডাটা লোড মেথড
   Future<void> loadCachedData({bool isSilent = false}) async {
-    // 🎯 মেইন ব্লকিং ফুল-স্ক্রিন লোডারকে সম্পূর্ণ স্কিপ করা হবে যদি কোনো ক্যাটাগরি সার্চ রানিং থাকে
     if (!isSilent && !_isCustomSearching) {
       _isLoading = true;
       notifyListeners();
+    }
+
+    // 🕒 প্রথমবার অ্যাপ চালুর সময় Hive থেকে পুরোনো সার্চ হিস্ট্রি মেমোরিতে লোড করা হচ্ছে
+    final List<dynamic>? cachedSearches = recentBox.get('searches');
+    if (cachedSearches != null) {
+      _recentSearchesList = List<String>.from(cachedSearches);
     }
 
     try {
@@ -122,12 +128,10 @@ class HomeProvider extends ChangeNotifier {
         String subtitle = e['subtitle'] ?? 'Near Your Area';
         String categoryRaw = e['category'] ?? _selectedCategory;
 
-        // 🗺️ সব লোকেশন জিপিএস কোঅর্ডিনেট ট্র্যাকিং ম্যাপে পুশ হচ্ছে
         if (name != 'Unknown Place' && lat != 0.0 && lng != 0.0) {
           _listingCoordsMap[name] = LatLng(lat, lng);
         }
 
-        // 📏 নিখুঁত লাইভ দূরত্ব ক্যালকুলেশন
         String finalDistance = "0.1km";
         if (_userPosition != null && lat != 0.0 && lng != 0.0) {
           double meters = Geolocator.distanceBetween(
@@ -158,26 +162,69 @@ class HomeProvider extends ChangeNotifier {
     }
 
     _isLoading = false;
-    _isCustomSearching = false; // 🎯 ডাটা চলে এসেছে, ইন্ডিকেটর বন্ধ হবে
+    _isCustomSearching = false;
     notifyListeners();
   }
 
-  // 🎯 নতুন কাস্টম সার্চ মেথড (ইউআই ফুল ভিজিবল রেখে হালকা ইন্ডিকেশন দিবে)
+  // 💾 নতুন সার্চ হিস্ট্রি Hive-এ রাইট করার জন্য মেথড
+  void addToRecentSearches(String query) {
+    if (query.trim().isEmpty) return;
+
+    _recentSearchesList.remove(query); // ডুপ্লিকেট ফিক্স
+    _recentSearchesList.insert(0, query); // একদম উপরে পুশ
+
+    if (_recentSearchesList.length > 5) {
+      _recentSearchesList.removeLast(); // টপ ৫টা হিস্ট্রি ব্যাকআপ রাখবে
+    }
+
+    recentBox.put('searches', _recentSearchesList); // Hive সেভ
+    notifyListeners();
+  }
+
+  // 🗑️ পুরো সার্চ হিস্ট্রি ডিলিট মেথড
+  void clearRecentSearches() {
+    _recentSearchesList.clear();
+    recentBox.delete('searches');
+    notifyListeners();
+  }
+
+  // 🔍 কাস্টম সার্চবারে কিছু সার্চ করলে রান হবে
   void searchCustomQuery(String query) {
+    if (query.trim().isEmpty) return;
+
     _routePoints = [];
     _selectedListing = null;
     _mapCenter = userLatLng;
     _mapZoom = 12.0;
     _currentPage = 0;
 
-    _isCustomSearching = true; // ইন্ডিকেটর ট্রিগার
+    _isCustomSearching = true;
+    _selectedCategory = query;
 
-    if (query.isEmpty) {
-      _selectedCategory = 'Others';
-    } else {
-      _selectedCategory = query;
+    addToRecentSearches(query); // 🚀 সার্চ করলে অটো রিসেন্টে সেভ হবে
+
+    notifyListeners();
+    loadCachedData(isSilent: false);
+  }
+
+  // 🎯 মেইন ক্যাটাগরি গ্রিডে ক্লিক করলে রান হবে
+  void filterByCategory(String category) {
+    _selectedCategory = _selectedCategory == category ? '' : category;
+    _routePoints = [];
+    _selectedListing = null;
+    _mapCenter = userLatLng;
+    _mapZoom = 12.0;
+    _currentPage = 0;
+
+    _isCustomSearching = _selectedCategory.isNotEmpty;
+
+    if (_selectedCategory.isNotEmpty) {
+      addToRecentSearches(
+        category,
+      ); // 🚀 ক্যাটাগরি ফিল্টার করলেও রিসেন্টে সেভ হবে
     }
 
+    _applyFilters();
     notifyListeners();
     loadCachedData(isSilent: false);
   }
@@ -192,6 +239,9 @@ class HomeProvider extends ChangeNotifier {
 
     _mapCenter = destLocation;
     _mapZoom = 14.5;
+
+    /// after result selectin to receive to hive box for display on recent search
+    addToRecentSearches(item.name);
 
     final url =
         'https://router.project-osrm.org/route/v1/driving/'
@@ -216,125 +266,6 @@ class HomeProvider extends ChangeNotifier {
       _routePoints = [userLatLng, _mapCenter!];
     }
     notifyListeners();
-    // _showDetailsBottomSheet(context, item);
-  }
-
-  // void _showDetailsBottomSheet(BuildContext context, ListingModel item) {
-  //   showModalBottomSheet(
-  //     context: context,
-  //     backgroundColor: Colors.transparent,
-  //     isScrollControlled: true,
-  //     builder: (context) {
-  //       return Container(
-  //         decoration: BoxDecoration(
-  //           color: Theme.of(context).cardColor,
-  //           borderRadius: const BorderRadius.only(
-  //             topLeft: Radius.circular(24),
-  //             topRight: Radius.circular(24),
-  //           ),
-  //         ),
-  //         padding: const EdgeInsets.all(20),
-  //         child: Column(
-  //           mainAxisSize: MainAxisSize.min,
-  //           crossAxisAlignment: CrossAxisAlignment.start,
-  //           children: [
-  //             Center(
-  //               child: Container(
-  //                 width: 50,
-  //                 height: 5,
-  //                 decoration: BoxDecoration(
-  //                   color: Colors.grey.withOpacity(0.5),
-  //                   borderRadius: BorderRadius.circular(10),
-  //                 ),
-  //               ),
-  //             ),
-  //             const SizedBox(height: 15),
-  //             Row(
-  //               children: [
-  //                 CircleAvatar(
-  //                   backgroundColor: item.iconColor.withOpacity(0.2),
-  //                   child: Icon(item.icon, color: item.iconColor),
-  //                 ),
-  //                 const SizedBox(width: 15),
-  //                 Expanded(
-  //                   child: Column(
-  //                     crossAxisAlignment: CrossAxisAlignment.start,
-  //                     children: [
-  //                       Text(
-  //                         item.name,
-  //                         style: const TextStyle(
-  //                           fontWeight: FontWeight.bold,
-  //                           fontSize: 18,
-  //                         ),
-  //                       ),
-  //                       Text(
-  //                         item.subtitle,
-  //                         style: const TextStyle(
-  //                           color: Colors.grey,
-  //                           fontSize: 14,
-  //                         ),
-  //                       ),
-  //                     ],
-  //                   ),
-  //                 ),
-  //               ],
-  //             ),
-  //             const SizedBox(height: 20),
-  //             Row(
-  //               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-  //               children: [
-  //                 Row(
-  //                   children: [
-  //                     const Icon(
-  //                       Icons.directions_car,
-  //                       color: Colors.blue,
-  //                       size: 20,
-  //                     ),
-  //                     const SizedBox(width: 5),
-  //                     Text(
-  //                       "Distance: ${item.distance}",
-  //                       style: const TextStyle(
-  //                         fontWeight: FontWeight.w600,
-  //                         fontSize: 15,
-  //                       ),
-  //                     ),
-  //                   ],
-  //                 ),
-  //                 IconButton(
-  //                   onPressed: () => Navigator.pop(context),
-  //                   icon: const Icon(Icons.map, color: Colors.white),
-  //                   style: IconButton.styleFrom(
-  //                     backgroundColor: Colors.blue,
-  //                     shape: RoundedRectangleBorder(
-  //                       borderRadius: BorderRadius.circular(12),
-  //                     ),
-  //                   ),
-  //                 ),
-  //               ],
-  //             ),
-  //           ],
-  //         ),
-  //       );
-  //     },
-  //   );
-  // }
-
-  // 🎯 আপনার রিকোয়ারমেন্ট অনুযায়ী এই মেথডটি মডিফাই করা হলো:
-
-  void filterByCategory(String category) {
-    _selectedCategory = _selectedCategory == category ? '' : category;
-    _routePoints = [];
-    _selectedListing = null;
-    _mapCenter = userLatLng;
-    _mapZoom = 12.0;
-    _currentPage = 0;
-
-    // 🎯 ম্যাজিক লাইন: যেকোনো মেইন গ্রিড ক্যাটাগরিতে ক্লিক করলেও হালকা লোডারটি ট্রিগার হবে
-    _isCustomSearching = _selectedCategory.isNotEmpty;
-
-    _applyFilters();
-    notifyListeners(); // সঙ্গে সঙ্গে ইন্ডিকেটর অন করবে
-    loadCachedData(isSilent: false);
   }
 
   void searchListings(String query) {
@@ -345,7 +276,6 @@ class HomeProvider extends ChangeNotifier {
 
   void _applyFilters() {
     List<ListingModel> temp = [];
-
     final knownIcons = [
       Icons.local_hospital,
       Icons.local_police,

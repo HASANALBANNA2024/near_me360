@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:near_me360/providers/theme_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/home_provider.dart';
-// নতুন সার্ভিস এবং স্প্ল্যাশ স্ক্রিনের ইমপোর্ট
 import 'services/init_service.dart';
 import 'splash_screen.dart';
 
@@ -13,6 +13,8 @@ void main() async {
 
   // অ্যাপের শুরুতে অফলাইন ENGINE স্টার্ট হবে
   await InitService.initializeApp();
+
+  await Hive.openBox('recent_searches');
 
   runApp(
     // 💡 MultiProvider দিয়ে দুটি প্রোভাইডারকেই রেজিস্টার করা হলো
