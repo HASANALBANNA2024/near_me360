@@ -176,7 +176,7 @@ class RecentSearchesPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
     final history = homeProvider.recentSearches;
-    final displayHistory = history.take(4).toList();
+    final displayHistory = history.take(3).toList();
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -194,7 +194,7 @@ class RecentSearchesPanel extends StatelessWidget {
                 '🕒 Recent Places',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
               ),
-              if (history.length > 4)
+              if (history.length > 3)
                 GestureDetector(
                   onTap: () => _showAllHistoryDialog(context, homeProvider),
                   child: Text(

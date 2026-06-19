@@ -26,7 +26,7 @@ class HomeProvider extends ChangeNotifier {
   double _selectedRadius = 50.0;
 
   int _currentPage = 0;
-  final int _itemsPerPage = 6;
+  final int _itemsPerPage = 4;
 
   final Map<String, LatLng> _listingCoordsMap = {};
 
