@@ -2,7 +2,6 @@ import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cache/flutter_map_cache.dart';
-import 'package:near_me360/models/listing_model.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/home_provider.dart';
@@ -14,15 +13,13 @@ class AllListingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
 
-    // 🎯 ফিল্টার হওয়া সব ডাটার নাম একসাথে নেওয়া হচ্ছে
-    final allItems = homeProvider.totalItems > 0
-        ? homeProvider.allListingCoords.keys.toList()
-        : [];
+    // 🎯 প্রোভাইডারের কারেন্ট পেজের ডাটা লিস্ট (এখন প্রতি পেজে ৮টি করে আসবে)
+    final currentListings = homeProvider.listings;
 
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         centerTitle: true,
-        // 🎯 অ্যাপবার কন্টেন্ট রেসপন্সিভ করা হলো (ওয়েবে সর্বোচ্চ ১১০০px উইডথ এবং সেন্টারিং)
         title: Center(
           child: Container(
             constraints: const BoxConstraints(maxWidth: 1100),
@@ -35,6 +32,7 @@ class AllListingsScreen extends StatelessWidget {
                     '${homeProvider.selectedCategory.isEmpty ? 'All' : homeProvider.selectedCategory} - All Places (${homeProvider.totalItems})',
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
@@ -48,227 +46,323 @@ class AllListingsScreen extends StatelessWidget {
       ),
       body: homeProvider.totalItems == 0
           ? const Center(child: Text('No services found 🔍'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: homeProvider.totalItems,
-              itemBuilder: (context, index) {
-                final name = allItems[index];
+          : Column(
+              children: [
+                // 📦 ১. মেইন লিস্ট ভিউ সেকশন
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: currentListings.length,
+                    itemBuilder: (context, index) {
+                      final item = currentListings[index];
 
-                ListingModel item;
-                try {
-                  item = homeProvider.listings.firstWhere(
-                    (l) => l.name == name,
-                  );
-                } catch (_) {
-                  item = ListingModel(
-                    name: name,
-                    subtitle: 'Near Your Area',
-                    distance: 'Calculating...',
-                    icon: Icons.place,
-                    iconColor: Colors.red,
-                  );
-                }
+                      final bool hasSubtitle =
+                          item.subtitle.isNotEmpty &&
+                          item.subtitle != 'Near Your Area' &&
+                          item.subtitle != 'Near Your Location';
 
-                // 🎯 কন্ডিশনাল চেকিং: ডাটা 'Near Your Area' বা ফাঁকা থাকলে হাইড করার জন্য
-                final bool hasSubtitle =
-                    item.subtitle.isNotEmpty &&
-                    item.subtitle != 'Near Your Area' &&
-                    item.subtitle != 'Near Your Location';
-
-                final bool hasDistance =
-                    item.distance.isNotEmpty &&
-                    item.distance != 'Locked' &&
-                    item.distance != 'Calculating...';
-
-                return Center(
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 1100),
-                    child: Card(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      child: InkWell(
-                        onTap: () {
-                          homeProvider
-                              .selectListingAndShowRoute(context, item)
-                              .then((_) {
-                                _showResponsiveMapSheet(context, homeProvider);
-                              });
-                        },
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: item.iconColor.withOpacity(0.1),
-                            child: Icon(item.icon, color: item.iconColor),
-                          ),
-                          title: Text(
-                            item.name,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          // 🎯 সাবটাইটেল/অ্যাড্রেস থাকলে দেখাবে, না থাকলে উইজেট গায়েব হয়ে যাবে
-                          subtitle: hasSubtitle
-                              ? Text(
-                                  item.subtitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                )
-                              : null,
-                          // 🎯 ডিস্ট্যান্স ভ্যালিড ডাটা হলে ট্রেইলিং-এ দেখাবে, না থাকলে আইকন দেখাবে
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (hasDistance) ...[
-                                Text(
-                                  item.distance,
+                      return Center(
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 1100),
+                          child: Card(
+                            elevation: 0,
+                            margin: const EdgeInsets.only(bottom: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            color: Theme.of(context).cardColor,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () {
+                                // 🎯 ক্লিক করলে ওএসআরএম রুট ম্যাপ ক্যালকুলেট হবে এবং নিচ থেকে ম্যাপ ওপেন হবে
+                                homeProvider
+                                    .selectListingAndShowRoute(context, item)
+                                    .then((_) {
+                                      _showResponsiveMapSheet(
+                                        context,
+                                        homeProvider,
+                                      );
+                                    });
+                              },
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: item.iconColor.withOpacity(
+                                    0.1,
+                                  ),
+                                  child: Icon(item.icon, color: item.iconColor),
+                                ),
+                                title: Text(
+                                  item.name,
                                   style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                              ],
-                              const Icon(Icons.map, color: Colors.blue),
-                            ],
+                                subtitle: hasSubtitle
+                                    ? Text(
+                                        item.subtitle,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      )
+                                    : const Text('Near Your Area'),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      item.distance,
+                                      style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Icon(
+                                      Icons.map,
+                                      color: Colors.blue,
+                                      size: 20,
+                                    ), // ম্যাপ ইন্ডিকেটর আইকন
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      );
+                    },
+                  ),
+                ),
+
+                // 🎯 ২. নিচে পেজিনেশন কন্ট্রোলার উইজেট (< এবং > বাটন)
+                Center(
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 1100),
+                    padding: const EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      bottom: 20,
+                      top: 10,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        // 📄 পেজ কাউন্টার টেক্সট
+                        Text(
+                          "Page ${homeProvider.currentPage} of ${homeProvider.totalPages}",
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+
+                        // ⬅️ Previous Button (<)
+                        IconButton(
+                          onPressed: homeProvider.hasPreviousPage
+                              ? () => homeProvider.previousPage()
+                              : null,
+                          icon: const Icon(Icons.arrow_back_ios_new, size: 14),
+                          style: IconButton.styleFrom(
+                            backgroundColor: homeProvider.hasPreviousPage
+                                ? Theme.of(context).cardColor
+                                : Colors.grey.withOpacity(0.05),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.all(10),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // ➡️ Next Button (>)
+                        IconButton(
+                          onPressed: homeProvider.hasNextPage
+                              ? () => homeProvider.nextPage()
+                              : null,
+                          icon: const Icon(Icons.arrow_forward_ios, size: 14),
+                          style: IconButton.styleFrom(
+                            backgroundColor: homeProvider.hasNextPage
+                                ? Theme.of(context).cardColor
+                                : Colors.grey.withOpacity(0.05),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.all(10),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                );
-              },
+                ),
+              ],
             ),
     );
   }
 
-  // 🎯 ৭৫% - ৮৫% হাইটের কাস্টম রেসপন্সিভ এবং ক্র্যাশ-ফ্রি ম্যাপ পপআপ শীট (As It Is)
+  /// maps widgets
   void _showResponsiveMapSheet(
     BuildContext context,
     HomeProvider homeProvider,
   ) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
-    final bool isMobile = screenWidth < 800;
 
-    double sheetHeight = isMobile
-        ? (screenHeight * 0.85)
-        : (screenHeight * 0.75);
+    /// height and width 80% of Existing screen
+    final double defaultHeight = screenHeight * 0.80;
+    final double defaultWidth = screenWidth * 0.80;
 
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
       builder: (context) {
-        return Center(
-          child: Container(
-            height: sheetHeight,
-            constraints: const BoxConstraints(maxWidth: 1100),
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(24),
-                topRight: Radius.circular(24),
-              ),
-            ),
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(24),
-                    topRight: Radius.circular(24),
-                  ),
-                  child: Consumer<HomeProvider>(
-                    builder: (context, provider, child) {
-                      List<Marker> markers = [];
+        bool isFullScreen = false;
 
-                      markers.add(
-                        Marker(
-                          point: provider.userLatLng,
-                          width: 40,
-                          height: 40,
-                          child: const Icon(
-                            Icons.my_location,
-                            color: Colors.green,
-                            size: 30,
-                          ),
-                        ),
-                      );
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                height: isFullScreen ? screenHeight : defaultHeight,
+                width: isFullScreen ? screenWidth : defaultWidth,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: isFullScreen
+                      ? BorderRadius.zero
+                      : BorderRadius.circular(20),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: isFullScreen
+                      ? BorderRadius.zero
+                      : BorderRadius.circular(20),
+                  child: Stack(
+                    children: [
+                      /// main map layer
+                      Positioned.fill(
+                        child: Consumer<HomeProvider>(
+                          builder: (context, provider, child) {
+                            List<Marker> markers = [];
 
-                      provider.allListingCoords.forEach((name, latLng) {
-                        bool isSelected =
-                            provider.selectedListing?.name == name;
-                        markers.add(
-                          Marker(
-                            point: latLng,
-                            width: 42,
-                            height: 42,
-                            child: Icon(
-                              Icons.location_on,
-                              color: isSelected ? Colors.red : Colors.grey,
-                              size: isSelected ? 40 : 28,
-                            ),
-                          ),
-                        );
-                      });
-
-                      return FlutterMap(
-                        options: MapOptions(
-                          initialCenter:
-                              provider.mapCenter ?? provider.userLatLng,
-                          initialZoom: provider.mapZoom,
-                        ),
-                        children: [
-                          TileLayer(
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.nearme360.app',
-                            tileProvider: CachedTileProvider(
-                              store: MemCacheStore(),
-                            ),
-                          ),
-                          if (provider.routePoints.isNotEmpty)
-                            PolylineLayer(
-                              polylines: [
-                                Polyline(
-                                  points: provider.routePoints,
-                                  strokeWidth: 6.0,
-                                  color: Colors.blue,
+                            /// live gps location pinned
+                            markers.add(
+                              Marker(
+                                point: provider.userLatLng,
+                                width: 40,
+                                height: 40,
+                                child: const Icon(
+                                  Icons.my_location,
+                                  color: Colors.green,
+                                  size: 30,
                                 ),
+                              ),
+                            );
+
+                            /// fixed loop
+                            provider.allListingCoords.forEach((name, latLng) {
+                              bool isSelected =
+                                  provider.selectedListing?.name == name;
+                              markers.add(
+                                Marker(
+                                  point: latLng,
+                                  width: 42,
+                                  height: 42,
+                                  child: Icon(
+                                    Icons.location_on,
+                                    color: isSelected
+                                        ? Colors.red
+                                        : Colors.grey,
+                                    size: isSelected ? 40 : 28,
+                                  ),
+                                ),
+                              );
+                            });
+
+                            return FlutterMap(
+                              options: MapOptions(
+                                initialCenter:
+                                    provider.mapCenter ?? provider.userLatLng,
+                                initialZoom: provider.mapZoom,
+                              ),
+                              children: [
+                                TileLayer(
+                                  urlTemplate:
+                                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                  userAgentPackageName: 'com.nearme360.app',
+                                  tileProvider: CachedTileProvider(
+                                    store: MemCacheStore(),
+                                  ),
+                                ),
+                                if (provider.routePoints.isNotEmpty)
+                                  PolylineLayer(
+                                    polylines: [
+                                      Polyline(
+                                        points: provider.routePoints,
+                                        strokeWidth: 6.0,
+                                        color: Colors.blue,
+                                      ),
+                                    ],
+                                  ),
+                                MarkerLayer(markers: markers),
                               ],
-                            ),
-                          MarkerLayer(markers: markers),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                Positioned(
-                  top: 12,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      width: 50,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(10),
+                            );
+                          },
+                        ),
                       ),
-                    ),
+
+                      /// flow control button
+                      Positioned(
+                        top: 16,
+                        right: 16,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: Row(
+                            children: [
+                              /// full screen and minimize button
+                              CircleAvatar(
+                                backgroundColor: Colors.black54,
+                                child: IconButton(
+                                  icon: Icon(
+                                    isFullScreen
+                                        ? Icons.fullscreen_exit
+                                        : Icons.fullscreen,
+                                    color: Colors.white,
+                                  ),
+                                  onPressed: () {
+                                    setModalState(() {
+                                      isFullScreen = !isFullScreen;
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              /// close button
+                              CircleAvatar(
+                                backgroundColor: Colors.black54,
+                                child: IconButton(
+                                  icon: const Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                  ),
+                                  onPressed: () => Navigator.pop(context),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Positioned(
-                  top: 16,
-                  right: 16,
-                  child: CircleAvatar(
-                    backgroundColor: Colors.black54,
-                    child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );

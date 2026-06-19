@@ -216,110 +216,111 @@ class HomeProvider extends ChangeNotifier {
       _routePoints = [userLatLng, _mapCenter!];
     }
     notifyListeners();
-    _showDetailsBottomSheet(context, item);
+    // _showDetailsBottomSheet(context, item);
   }
 
-  void _showDetailsBottomSheet(BuildContext context, ListingModel item) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(24),
-              topRight: Radius.circular(24),
-            ),
-          ),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 50,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: item.iconColor.withOpacity(0.2),
-                    child: Icon(item.icon, color: item.iconColor),
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
-                        ),
-                        Text(
-                          item.subtitle,
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.directions_car,
-                        color: Colors.blue,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        "Distance: ${item.distance}",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ],
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.map, color: Colors.white),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  // void _showDetailsBottomSheet(BuildContext context, ListingModel item) {
+  //   showModalBottomSheet(
+  //     context: context,
+  //     backgroundColor: Colors.transparent,
+  //     isScrollControlled: true,
+  //     builder: (context) {
+  //       return Container(
+  //         decoration: BoxDecoration(
+  //           color: Theme.of(context).cardColor,
+  //           borderRadius: const BorderRadius.only(
+  //             topLeft: Radius.circular(24),
+  //             topRight: Radius.circular(24),
+  //           ),
+  //         ),
+  //         padding: const EdgeInsets.all(20),
+  //         child: Column(
+  //           mainAxisSize: MainAxisSize.min,
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             Center(
+  //               child: Container(
+  //                 width: 50,
+  //                 height: 5,
+  //                 decoration: BoxDecoration(
+  //                   color: Colors.grey.withOpacity(0.5),
+  //                   borderRadius: BorderRadius.circular(10),
+  //                 ),
+  //               ),
+  //             ),
+  //             const SizedBox(height: 15),
+  //             Row(
+  //               children: [
+  //                 CircleAvatar(
+  //                   backgroundColor: item.iconColor.withOpacity(0.2),
+  //                   child: Icon(item.icon, color: item.iconColor),
+  //                 ),
+  //                 const SizedBox(width: 15),
+  //                 Expanded(
+  //                   child: Column(
+  //                     crossAxisAlignment: CrossAxisAlignment.start,
+  //                     children: [
+  //                       Text(
+  //                         item.name,
+  //                         style: const TextStyle(
+  //                           fontWeight: FontWeight.bold,
+  //                           fontSize: 18,
+  //                         ),
+  //                       ),
+  //                       Text(
+  //                         item.subtitle,
+  //                         style: const TextStyle(
+  //                           color: Colors.grey,
+  //                           fontSize: 14,
+  //                         ),
+  //                       ),
+  //                     ],
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //             const SizedBox(height: 20),
+  //             Row(
+  //               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //               children: [
+  //                 Row(
+  //                   children: [
+  //                     const Icon(
+  //                       Icons.directions_car,
+  //                       color: Colors.blue,
+  //                       size: 20,
+  //                     ),
+  //                     const SizedBox(width: 5),
+  //                     Text(
+  //                       "Distance: ${item.distance}",
+  //                       style: const TextStyle(
+  //                         fontWeight: FontWeight.w600,
+  //                         fontSize: 15,
+  //                       ),
+  //                     ),
+  //                   ],
+  //                 ),
+  //                 IconButton(
+  //                   onPressed: () => Navigator.pop(context),
+  //                   icon: const Icon(Icons.map, color: Colors.white),
+  //                   style: IconButton.styleFrom(
+  //                     backgroundColor: Colors.blue,
+  //                     shape: RoundedRectangleBorder(
+  //                       borderRadius: BorderRadius.circular(12),
+  //                     ),
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //           ],
+  //         ),
+  //       );
+  //     },
+  //   );
+  // }
 
   // 🎯 আপনার রিকোয়ারমেন্ট অনুযায়ী এই মেথডটি মডিফাই করা হলো:
+
   void filterByCategory(String category) {
     _selectedCategory = _selectedCategory == category ? '' : category;
     _routePoints = [];
