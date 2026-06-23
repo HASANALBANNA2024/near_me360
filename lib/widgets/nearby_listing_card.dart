@@ -11,6 +11,9 @@ class NearbyListingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Access HomeProvider once to use inside the favorite button
+    final homeProvider = Provider.of<HomeProvider>(context, listen: false);
+
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 8),
@@ -19,11 +22,8 @@ class NearbyListingCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          // 🎯 ওএসআরএম রুট ম্যাপ এবং নিচ থেকে সুন্দর বটম শীট ওপেন করার জন্য মেথড কল
-          Provider.of<HomeProvider>(
-            context,
-            listen: false,
-          ).selectListingAndShowRoute(context, listing);
+          // Trigger OSRM route map display on card tap
+          homeProvider.selectListingAndShowRoute(context, listing);
         },
         child: ListTile(
           leading: CircleAvatar(
@@ -35,12 +35,33 @@ class NearbyListingCard extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           subtitle: Text(listing.subtitle),
-          trailing: Text(
-            listing.distance,
-            style: const TextStyle(
-              color: Colors.grey,
-              fontWeight: FontWeight.w500,
-            ),
+          // Modified trailing to hold both Distance text and Favorite button side-by-side
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                listing.distance,
+                style: const TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(
+                width: 4,
+              ), // Small spacing between distance and heart icon
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: Icon(
+                  listing.isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: listing.isFavorite ? Colors.redAccent : Colors.grey,
+                ),
+                onPressed: () {
+                  // Toggle favorite state within provider instance
+                  homeProvider.toggleFavorite(listing);
+                },
+              ),
+            ],
           ),
         ),
       ),

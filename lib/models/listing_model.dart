@@ -6,6 +6,7 @@ class ListingModel {
   final String distance;
   final IconData icon;
   final Color iconColor;
+  bool isFavorite;
 
   ListingModel({
     required this.name,
@@ -13,5 +14,6 @@ class ListingModel {
     required this.distance,
     required this.icon,
     required this.iconColor,
+    this.isFavorite = false,
   });
 }

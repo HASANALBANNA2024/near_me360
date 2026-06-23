@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../providers/home_provider.dart'; // ✅ হোম প্রোভাইডার ইম্পোর্ট করা হলো
+import '../providers/home_provider.dart';
 import '../providers/theme_provider.dart';
+import '../screens/favorite_screen.dart';
 
 class SidebarNavigation extends StatelessWidget {
   final int currentIndex;
@@ -17,7 +18,7 @@ class SidebarNavigation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    // ⚡ হোম প্রোভাইডার কল লিসেন বাদে (অ্যাকশন হ্যান্ডেল করার জন্য)
+    // Access HomeProvider without listening to operational flow rebuilds
     final homeProvider = Provider.of<HomeProvider>(context, listen: false);
 
     return Container(
@@ -39,34 +40,41 @@ class SidebarNavigation extends StatelessWidget {
           ),
           const SizedBox(height: 32),
 
-          // 🏠 Home (ক্লিক করলে সাধারণ ডিফল্ট অবস্থায় নিয়ে যাবে)
+          // 🏠 Home (Resets filter state and routes back to home view)
           _buildNavItem(context, 0, Icons.home, 'Home', () {
-            homeProvider.filterByCategory(''); // ক্লিয়ার করে দিবে ফিল্টার
+            homeProvider.filterByCategory('');
             onIndexChanged(0);
           }),
 
-          // 🏥 Emergency (ক্লিক করলে সরাসরি ইমারজেন্সি গ্রুপ কল হবে)
+          // 🏥 Emergency (Triggers strategic localized emergency queries)
           _buildNavItem(context, 1, Icons.emergency, 'Emergency', () {
-            onIndexChanged(0); // 🚀 প্রথমে হোম স্ক্রিনে নিয়ে যাবে
-            homeProvider.searchCustomGroup(
-              'emergency',
-            ); // 🎯 ৭ম পিলার আপডেট লজিক
+            onIndexChanged(0);
+            homeProvider.searchCustomGroup('emergency');
           }),
 
-          // 🎓 Education (ক্লিক করলে এডুকেশন গ্রুপ কল হবে)
+          // 🎓 Education (Triggers school/college filtering rules)
           _buildNavItem(context, 2, Icons.school, 'Education', () {
-            onIndexChanged(0); // 🚀 হোম স্ক্রিনে নিয়ে যাবে
-            homeProvider.searchCustomGroup(
-              'education',
-            ); // 🎯 ৭ম পিলার আপডেট লজিক
+            onIndexChanged(0);
+            homeProvider.searchCustomGroup('education');
           }),
 
-          // 🚌 Transport (ক্লিক করলে ট্রান্সপোর্ট গ্রুপ কল হবে)
+          // 🚌 Transport (Triggers transportation service group search)
           _buildNavItem(context, 3, Icons.directions_bus, 'Transport', () {
-            onIndexChanged(0); // 🚀 হোম স্ক্রিনে নিয়ে যাবে
-            homeProvider.searchCustomGroup(
-              'transport',
-            ); // 🎯 ৭ম পিলার আপডেট লজিক
+            onIndexChanged(0);
+            homeProvider.searchCustomGroup('transport');
+          }),
+
+          // ❤️ Favorites (Directly pushes the dedicated FavoritesScreen)
+          _buildNavItem(context, 4, Icons.favorite, 'Favorites', () {
+            // Check if the current context can pop (useful if used inside a Drawer)
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+            onIndexChanged(4); // Updates active navigation state highlights
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const FavoritesScreen()),
+            );
           }),
 
           const Spacer(),
@@ -85,7 +93,7 @@ class SidebarNavigation extends StatelessWidget {
     );
   }
 
-  // 🛠️ মডিফাইড হেল্পার মেথড (OnTap হ্যান্ডেল করার জন্য কাস্টম VoidCallback যুক্ত করা হয়েছে)
+  // Modified helper method utilizing custom VoidCallback parameter mappings
   Widget _buildNavItem(
     BuildContext context,
     int index,
@@ -108,7 +116,7 @@ class SidebarNavigation extends StatelessWidget {
         ),
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      onTap: customOnTap, // 🚀 আমাদের কাস্টমাইজড অন-ট্যাপ মেথড কাজ করবে এখানে
+      onTap: customOnTap, // Custom actionable callback execution line
     );
   }
 }

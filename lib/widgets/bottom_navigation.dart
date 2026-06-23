@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../providers/home_provider.dart'; // ✅ হোম প্রোভাইডার ইম্পোর্ট
+import '../providers/home_provider.dart';
+import '../screens/favorite_screen.dart';
 
 class BottomNavigation extends StatelessWidget {
   final int currentIndex;
@@ -15,32 +16,40 @@ class BottomNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ⚡ হোম প্রোভাইডার কল (listen: false)
+    // Access HomeProvider without listening to structural state rebuilds
     final homeProvider = Provider.of<HomeProvider>(context, listen: false);
 
     return BottomNavigationBar(
       currentIndex: currentIndex,
       onTap: (index) {
-        // 🚀 সাইডবারের মতো হুবহু ৪টি বাটনের অ্যাকশন লজিক
+        // Evaluate the triggered index and perform corresponding action syncs
         if (index == 0) {
-          // 🏠 Home
-          homeProvider.filterByCategory(''); // ফিল্টার রিসেট
+          // Home
+          homeProvider.filterByCategory('');
           onIndexChanged(0);
         } else if (index == 1) {
-          // 🏥 Emergency
-          onIndexChanged(0); // হোম স্ক্রিনে ব্যাক করবে
-          homeProvider.searchCustomGroup('emergency'); // ৭ম পিলার অন হবে
+          // Emergency
+          onIndexChanged(0);
+          homeProvider.searchCustomGroup('emergency');
         } else if (index == 2) {
-          // 🎓 Education
+          // Education
           onIndexChanged(0);
           homeProvider.searchCustomGroup('education');
         } else if (index == 3) {
-          // 🚌 Transport
+          // Transport
           onIndexChanged(0);
           homeProvider.searchCustomGroup('transport');
+        } else if (index == 4) {
+          // ✅ Directly push FavoritesScreen and update active bottom tab index highlights
+          onIndexChanged(4);
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const FavoritesScreen()),
+          );
         }
       },
-      type: BottomNavigationBarType.fixed,
+      type:
+          BottomNavigationBarType.fixed, // Keeps all 5 items visible and static
       selectedItemColor: const Color(0xFF3B82F6),
       unselectedItemColor: Colors.grey,
       backgroundColor: Theme.of(context).cardColor,
@@ -55,6 +64,10 @@ class BottomNavigation extends StatelessWidget {
           icon: Icon(Icons.directions_bus),
           label: 'Transport',
         ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.favorite),
+          label: 'Favorites',
+        ), // ✅ Safe persistent target
       ],
     );
   }

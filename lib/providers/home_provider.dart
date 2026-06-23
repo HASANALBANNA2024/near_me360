@@ -30,12 +30,12 @@ class HomeProvider extends ChangeNotifier {
 
   final Map<String, LatLng> _listingCoordsMap = {};
 
-  // 🕒 রিসেন্ট সার্চের জন্য সেফ অবজেক্ট লিস্ট (নাম, ল্যাট, লন সহ)
+  // Recent searches cache list (name, lat, lng objects)
   List<Map<String, dynamic>> _recentSearchesList = [];
   List<Map<String, dynamic>> get recentSearches => _recentSearchesList;
   final recentBox = Hive.box('recent_searches');
 
-  // 🎯 সাইডবার গ্রুপ ফিল্টারের জন্য স্টেট ট্র্যাকিং ভেরিয়েবল (নতুন যুক্ত করা হয়েছে)
+  // Sidebar group filter state tracking variables
   String _currentActiveGroup = '';
   String get currentActiveGroup => _currentActiveGroup;
 
@@ -87,27 +87,24 @@ class HomeProvider extends ChangeNotifier {
     loadCachedData(isSilent: true);
   }
 
-  // 📥 ক্যাশ ও লাইভ ডাটা লোড মেথড
+  // Load cached and live network data
   Future<void> loadCachedData({bool isSilent = false}) async {
     if (!isSilent && !_isCustomSearching) {
       _isLoading = true;
       notifyListeners();
     }
 
-    // 🔒 🛡️ ক্রাশ প্রোটেকশন চেক: পুরোনো ডাটা ফরম্যাট মিসম্যাচ ফিক্স
+    // Crash protection check: Fix old data format mismatch
     final List<dynamic>? cachedSearches = recentBox.get('searches');
     if (cachedSearches != null) {
       try {
         _recentSearchesList = cachedSearches
-            .where(
-              (e) => e is Map,
-            ) // পুরোনো কোনো Plain String থাকলে সেটিকে বাদ দিয়ে দিবে
+            .where((e) => e is Map)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
       } catch (e) {
         print("Hive Data Safe Migration Error: $e");
-        _recentSearchesList =
-            []; // সমস্যা হলে ডাটা রিমুভ করে ফ্লিট ব্লক হওয়া আটকাবে
+        _recentSearchesList = [];
       }
     }
 
@@ -124,7 +121,7 @@ class HomeProvider extends ChangeNotifier {
 
       List<dynamic> list = [];
       if (_selectedCategory.isNotEmpty) {
-        // 🚀 যদি গ্রুপ একটিভ থাকে, তাহলে মেইন কিওয়ার্ড ওএসএম (OSM) এ পাঠানোর জন্য শর্টকাট করা হলো
+        // If a group is active, resolve standard keyword mapping for OSM API
         String fetchKeyword = _selectedCategory;
         if (_currentActiveGroup == 'emergency') fetchKeyword = 'hospital';
         if (_currentActiveGroup == 'education') fetchKeyword = 'school';
@@ -185,7 +182,7 @@ class HomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 💾 লোকেশন Hive-এ অবজেক্ট আকারে সেভ (লাস্ট ৫০ টি)
+  // Save selected location to Hive (stores up to last 50 entries)
   void saveSelectedLocationToHive(String name, double lat, double lng) {
     if (name.trim().isEmpty || lat == 0.0 || lng == 0.0) return;
 
@@ -211,7 +208,7 @@ class HomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 🚀 কার্ড বা পিনে ক্লিক করলে লোকেশন সেভ করবে এবং রুট জেনারেট করবে
+  // Triggered on card or marker click to save location and fetch route
   Future<void> selectListingAndShowRoute(
     BuildContext context,
     ListingModel item,
@@ -223,7 +220,6 @@ class HomeProvider extends ChangeNotifier {
     _mapCenter = destLocation;
     _mapZoom = 14.5;
 
-    // 🎯 নাম ও ল্যাট-লোনসহ অফলাইনে স্টোর হচ্ছে
     saveSelectedLocationToHive(
       item.name,
       destLocation.latitude,
@@ -233,7 +229,7 @@ class HomeProvider extends ChangeNotifier {
     await _fetchRoute(destLocation);
   }
 
-  // 🕒 রিসেন্ট প্যানেল বা সি-মোর পপ-আপ থেকে ক্লিক করলে অফলাইন ডাটা নিয়ে সরাসরি ম্যাপ মুভ করবে
+  // Navigate to offline location directly via recent panel
   Future<void> selectRecentOfflineLocation(String name, LatLng location) async {
     _selectedListing = ListingModel(
       name: name,
@@ -277,7 +273,7 @@ class HomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 🚀 🎯 সাইডবার ক্লিকের জন্য স্পেশাল গ্রুপ ফিল্টার মেথড (নতুন যুক্ত করা হয়েছে)
+  // Custom group search handling for sidebar menu actions
   void searchCustomGroup(String groupType) {
     _routePoints = [];
     _selectedListing = null;
@@ -310,7 +306,7 @@ class HomeProvider extends ChangeNotifier {
     _mapZoom = 12.0;
     _currentPage = 0;
     _isCustomSearching = true;
-    _currentActiveGroup = ''; // কাস্টম সার্চ দিলে সাইডবার গ্রুপ রিসেট হবে
+    _currentActiveGroup = ''; // Reset group filter on manual custom search
     _selectedCategory = query;
     notifyListeners();
     loadCachedData(isSilent: false);
@@ -323,7 +319,8 @@ class HomeProvider extends ChangeNotifier {
     _mapCenter = userLatLng;
     _mapZoom = 12.0;
     _currentPage = 0;
-    _currentActiveGroup = ''; // ক্যাটাগরি ফিল্টার করলে সাইডবার গ্রুপ রিসেট হবে
+    _currentActiveGroup =
+        ''; // Reset group filter on explicit category selection
     _isCustomSearching = _selectedCategory.isNotEmpty;
     _applyFilters();
     notifyListeners();
@@ -365,7 +362,7 @@ class HomeProvider extends ChangeNotifier {
       bool matchesCat = _selectedCategory.isEmpty;
 
       if (!matchesCat) {
-        // 🚀 যদি সাইডবার গ্রুপ ফিল্টার একটিভ থাকে, তবে মাল্টিপল সাব-আইটেম ম্যাচ লজিক (নতুন যুক্ত)
+        // Multi-keyword matching logic if a custom group sidebar filter is active
         if (_currentActiveGroup == 'emergency') {
           final n = item.name.toLowerCase();
           final s = item.subtitle.toLowerCase();
@@ -406,8 +403,11 @@ class HomeProvider extends ChangeNotifier {
               s.contains('bus') ||
               s.contains('petrol') ||
               s.contains('station');
+        } else if (_currentActiveGroup == 'favorites') {
+          // Verify against localized favorite tag status
+          matchesCat = item.isFavorite;
         } else {
-          // আপনার অরিজিনাল আগের লজিক (No Change)
+          // Standard categorical filtering fallback
           String selected = _selectedCategory.toLowerCase().trim();
           IconData targetIcon = getIconForCategory(selected);
 
@@ -451,11 +451,11 @@ class HomeProvider extends ChangeNotifier {
   }
 
   IconData getIconForCategory(String category) {
-    // সাইডবার ডাইনামিক আইকন বাইন্ডিং সাপোর্ট
     final cat = category.toLowerCase().trim();
     if (cat == 'emergency') return Icons.gpp_bad;
     if (cat == 'education') return Icons.cast_for_education;
     if (cat == 'transport') return Icons.commute;
+    if (cat == 'favorites') return Icons.favorite;
 
     switch (cat) {
       case 'hospital':
@@ -480,11 +480,11 @@ class HomeProvider extends ChangeNotifier {
   }
 
   Color getColorForCategory(String category) {
-    // সাইডবার ডাইনামিক কালার বাইন্ডিং সাপোর্ট
     final cat = category.toLowerCase().trim();
     if (cat == 'emergency') return Colors.redAccent;
     if (cat == 'education') return Colors.deepOrangeAccent;
     if (cat == 'transport') return Colors.amber;
+    if (cat == 'favorites') return Colors.redAccent;
 
     switch (cat) {
       case 'hospital':
@@ -508,7 +508,7 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
-  // 📊 ৭ নম্বর পিলারের ডাইনামিক গ্রাফ জেনারেটর (নতুন যুক্ত করা হয়েছে)
+  // Dynamic graph data generator for the 7th custom bar segment
   List<Map<String, dynamic>> get separateGraphList {
     List<Map<String, dynamic>> items = [
       {
@@ -600,6 +600,10 @@ class HomeProvider extends ChangeNotifier {
         shortName = 'Transport';
         shortIcon = Icons.commute;
         shortColor = Colors.amber;
+      } else if (_currentActiveGroup == 'favorites') {
+        shortName = 'Favorites';
+        shortIcon = Icons.favorite;
+        shortColor = Colors.redAccent;
       }
 
       items.add({
@@ -607,11 +611,69 @@ class HomeProvider extends ChangeNotifier {
         'name': shortName,
         'icon': shortIcon,
         'color': shortColor,
-        'count':
-            _filteredListings.length, // টোটাল কতগুলো গ্রুপ ডাটা ফিল্টারড হলো
+        'count': _filteredListings.length,
       });
     }
 
     return items;
+  }
+
+  // 🎯 =================== FAVORITE FEATURE LOGIC =================== 🎯
+
+  // Toggle favorite status and synchronize records offline using Hive
+  void toggleFavorite(ListingModel item) {
+    item.isFavorite = !item.isFavorite;
+
+    List<dynamic> favList = recentBox.get('favorites_list', defaultValue: []);
+    List<Map<String, dynamic>> updatedFavs = favList
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+
+    if (item.isFavorite) {
+      updatedFavs.add({
+        'name': item.name,
+        'subtitle': item.subtitle,
+        'distance': item.distance,
+        'category': item.name.toLowerCase(),
+      });
+    } else {
+      updatedFavs.removeWhere((element) => element['name'] == item.name);
+    }
+
+    recentBox.put('favorites_list', updatedFavs);
+
+    if (_currentActiveGroup == 'favorites') {
+      showFavoritesOnly();
+    } else {
+      notifyListeners();
+    }
+  }
+
+  // Request to display favorites locally cached records within the application viewport
+  void showFavoritesOnly() {
+    _routePoints = [];
+    _selectedListing = null;
+    _mapCenter = userLatLng;
+    _currentPage = 0;
+    _isCustomSearching = true;
+    _currentActiveGroup = 'favorites';
+    _selectedCategory = 'favorites';
+
+    List<dynamic> favList = recentBox.get('favorites_list', defaultValue: []);
+
+    _allListings = favList.map((e) {
+      final map = Map<String, dynamic>.from(e as Map);
+      return ListingModel(
+        name: map['name'] ?? '',
+        subtitle: map['subtitle'] ?? '',
+        distance: map['distance'] ?? '0.1km',
+        icon: getIconForCategory(map['category'] ?? ''),
+        iconColor: getColorForCategory(map['category'] ?? ''),
+        isFavorite: true,
+      );
+    }).toList();
+
+    _filteredListings = List.from(_allListings);
+    notifyListeners();
   }
 }
