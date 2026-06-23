@@ -40,8 +40,7 @@ class BottomNavigation extends StatelessWidget {
           onIndexChanged(0);
           homeProvider.searchCustomGroup('transport');
         } else if (index == 4) {
-          // ✅ Directly push FavoritesScreen and update active bottom tab index highlights
-          onIndexChanged(4);
+          // ✅ Removed onIndexChanged(4) to prevent dashboard RangeError crash
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const FavoritesScreen()),

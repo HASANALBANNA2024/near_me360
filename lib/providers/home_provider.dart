@@ -618,9 +618,8 @@ class HomeProvider extends ChangeNotifier {
     return items;
   }
 
-  // 🎯 =================== FAVORITE FEATURE LOGIC =================== 🎯
+  /// =================== FAVORITE FEATURE LOGIC ===================
 
-  // Toggle favorite status and synchronize records offline using Hive
   void toggleFavorite(ListingModel item) {
     item.isFavorite = !item.isFavorite;
 
@@ -630,11 +629,20 @@ class HomeProvider extends ChangeNotifier {
         .toList();
 
     if (item.isFavorite) {
+      /// Fetch destination coordinates from global map memory to store into Hive box safely
+      LatLng? coords = _listingCoordsMap[item.name];
+
       updatedFavs.add({
         'name': item.name,
         'subtitle': item.subtitle,
         'distance': item.distance,
         'category': item.name.toLowerCase(),
+        'latitude': coords?.latitude ?? 0.0,
+
+        ///  Latitude Stored
+        'longitude': coords?.longitude ?? 0.0,
+
+        ///  Longitude Stored
       });
     } else {
       updatedFavs.removeWhere((element) => element['name'] == item.name);
@@ -649,7 +657,36 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
-  // Request to display favorites locally cached records within the application viewport
+  Future<void> selectFavoriteAndShowRoute({
+    required String name,
+    required double destLat,
+    required double destLng,
+  }) async {
+    if (destLat == 0.0 || destLng == 0.0) return;
+
+    LatLng destLocation = LatLng(destLat, destLng);
+
+    // 1. Point map center camera directly to the target destination pointer
+    _mapCenter = destLocation;
+    _mapZoom = 14.5;
+    _listingCoordsMap[name] = destLocation;
+
+    // 2. Fetch fresh instant live coordinates of where the user is standing right now
+    try {
+      _userPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 5),
+      );
+    } catch (e) {
+      print("GPS Core Existing Refresh Error: $e");
+    }
+
+    notifyListeners();
+
+    // 3. Fire OSRM routing protocol using the updated live user positioning states
+    await _fetchRoute(destLocation);
+  }
+
   void showFavoritesOnly() {
     _routePoints = [];
     _selectedListing = null;

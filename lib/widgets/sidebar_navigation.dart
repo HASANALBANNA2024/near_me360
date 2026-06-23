@@ -64,13 +64,11 @@ class SidebarNavigation extends StatelessWidget {
             homeProvider.searchCustomGroup('transport');
           }),
 
-          // ❤️ Favorites (Directly pushes the dedicated FavoritesScreen)
           _buildNavItem(context, 4, Icons.favorite, 'Favorites', () {
-            // Check if the current context can pop (useful if used inside a Drawer)
             if (Navigator.canPop(context)) {
               Navigator.pop(context);
             }
-            onIndexChanged(4); // Updates active navigation state highlights
+            // ✅ Removed onIndexChanged(4) to prevent dashboard RangeError crash
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const FavoritesScreen()),
