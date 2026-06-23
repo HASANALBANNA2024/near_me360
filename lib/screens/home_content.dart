@@ -6,8 +6,6 @@ import '../widgets/category_grid.dart';
 import '../widgets/map_view.dart';
 import '../widgets/nearby_listing_card.dart';
 import '../widgets/recent_searches_panel.dart';
-import '../widgets/settings_panel.dart';
-import '../widgets/stats_panel.dart';
 import 'all_listings_screen.dart';
 
 class HomeContent extends StatefulWidget {
@@ -89,12 +87,12 @@ class _HomeContentState extends State<HomeContent> {
                                 ],
                               ),
 
-                        const SizedBox(height: 16),
-                        const StatsPanel(),
+                        // const SizedBox(height: 16),
+                        // const StatsPanel(),
                         const SizedBox(height: 16),
                         const RecentSearchesPanel(), // ক্লিন রিসেন্ট সার্চ
                         const SizedBox(height: 16),
-                        const SettingsPanel(),
+                        // const SettingsPanel(),
                       ] else ...[
                         /// ------ web and big screen layout ------
                         Row(
@@ -110,8 +108,8 @@ class _HomeContentState extends State<HomeContent> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: const [
-                                      Expanded(child: StatsPanel()),
-                                      SizedBox(width: 16),
+                                      // Expanded(child: StatsPanel()),
+                                      // SizedBox(width: 16),
                                       Expanded(
                                         child: RecentSearchesPanel(),
                                       ), // ফুল রেসপনসিভ প্যানেল
@@ -156,7 +154,7 @@ class _HomeContentState extends State<HomeContent> {
                                           ],
                                         ),
                                   const SizedBox(height: 16),
-                                  const SettingsPanel(),
+                                  // const SettingsPanel(),
                                 ],
                               ),
                             ),

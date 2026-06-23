@@ -4,10 +4,10 @@ import 'screens/education_content.dart';
 import 'screens/emergency_content.dart';
 import 'screens/home_content.dart';
 import 'screens/transport_content.dart';
+import 'widgets/app_bar.dart';
 import 'widgets/bottom_navigation.dart';
 import 'widgets/responsive_builder.dart';
 import 'widgets/sidebar_navigation.dart';
-import 'widgets/top_header.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -68,6 +68,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         child: TopHeader(),
                       ),
+
                       Expanded(child: _bodyContents[_currentIndex]),
                     ],
                   ),

@@ -35,6 +35,10 @@ class HomeProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get recentSearches => _recentSearchesList;
   final recentBox = Hive.box('recent_searches');
 
+  // 🎯 সাইডবার গ্রুপ ফিল্টারের জন্য স্টেট ট্র্যাকিং ভেরিয়েবল (নতুন যুক্ত করা হয়েছে)
+  String _currentActiveGroup = '';
+  String get currentActiveGroup => _currentActiveGroup;
+
   List<ListingModel> get listings {
     int start = _currentPage * _itemsPerPage;
     int end = start + _itemsPerPage;
@@ -97,13 +101,13 @@ class HomeProvider extends ChangeNotifier {
         _recentSearchesList = cachedSearches
             .where(
               (e) => e is Map,
-            ) // পুরোনো কোনো Plain String থাকলে সেটিকে বাদ দিয়ে দিবে
+            ) // পুরোনো কোনো Plain String থাকলে সেটিকে বাদ দিয়ে দিবে
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
       } catch (e) {
         print("Hive Data Safe Migration Error: $e");
         _recentSearchesList =
-            []; // সমস্যা হলে ডাটা রিমুভ করে ফ্লিট ব্লক হওয়া আটকাবে
+            []; // সমস্যা হলে ডাটা রিমুভ করে ফ্লিট ব্লক হওয়া আটকাবে
       }
     }
 
@@ -120,10 +124,16 @@ class HomeProvider extends ChangeNotifier {
 
       List<dynamic> list = [];
       if (_selectedCategory.isNotEmpty) {
+        // 🚀 যদি গ্রুপ একটিভ থাকে, তাহলে মেইন কিওয়ার্ড ওএসএম (OSM) এ পাঠানোর জন্য শর্টকাট করা হলো
+        String fetchKeyword = _selectedCategory;
+        if (_currentActiveGroup == 'emergency') fetchKeyword = 'hospital';
+        if (_currentActiveGroup == 'education') fetchKeyword = 'school';
+        if (_currentActiveGroup == 'transport') fetchKeyword = 'bus';
+
         list = await MapPlacesService.fetchLivePlaces(
           userLocation: userLatLng,
           radiusInKm: _selectedRadius,
-          category: _selectedCategory,
+          category: fetchKeyword,
         );
       }
 
@@ -223,7 +233,7 @@ class HomeProvider extends ChangeNotifier {
     await _fetchRoute(destLocation);
   }
 
-  // 🕒 রিসেন্ট প্যানেল বা সি-মোর পপ-আপ থেকে ক্লিক করলে অফলাইন ডাটা নিয়ে সরাসরি ম্যাপ মুভ করবে
+  // 🕒 রিসেন্ট প্যানেল বা সি-মোর পপ-আপ থেকে ক্লিক করলে অফলাইন ডাটা নিয়ে সরাসরি ম্যাপ মুভ করবে
   Future<void> selectRecentOfflineLocation(String name, LatLng location) async {
     _selectedListing = ListingModel(
       name: name,
@@ -267,6 +277,31 @@ class HomeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // 🚀 🎯 সাইডবার ক্লিকের জন্য স্পেশাল গ্রুপ ফিল্টার মেথড (নতুন যুক্ত করা হয়েছে)
+  void searchCustomGroup(String groupType) {
+    _routePoints = [];
+    _selectedListing = null;
+    _mapCenter = userLatLng;
+    _mapZoom = 12.0;
+    _currentPage = 0;
+    _isCustomSearching = true;
+    _currentActiveGroup = groupType.toLowerCase().trim();
+
+    if (_currentActiveGroup == 'emergency') {
+      _selectedCategory = 'Emergency';
+    } else if (_currentActiveGroup == 'education') {
+      _selectedCategory = 'Education';
+    } else if (_currentActiveGroup == 'transport') {
+      _selectedCategory = 'Transport';
+    } else {
+      _selectedCategory = '';
+      _isCustomSearching = false;
+    }
+
+    notifyListeners();
+    loadCachedData(isSilent: false);
+  }
+
   void searchCustomQuery(String query) {
     if (query.trim().isEmpty) return;
     _routePoints = [];
@@ -275,6 +310,7 @@ class HomeProvider extends ChangeNotifier {
     _mapZoom = 12.0;
     _currentPage = 0;
     _isCustomSearching = true;
+    _currentActiveGroup = ''; // কাস্টম সার্চ দিলে সাইডবার গ্রুপ রিসেট হবে
     _selectedCategory = query;
     notifyListeners();
     loadCachedData(isSilent: false);
@@ -287,6 +323,7 @@ class HomeProvider extends ChangeNotifier {
     _mapCenter = userLatLng;
     _mapZoom = 12.0;
     _currentPage = 0;
+    _currentActiveGroup = ''; // ক্যাটাগরি ফিল্টার করলে সাইডবার গ্রুপ রিসেট হবে
     _isCustomSearching = _selectedCategory.isNotEmpty;
     _applyFilters();
     notifyListeners();
@@ -328,19 +365,63 @@ class HomeProvider extends ChangeNotifier {
       bool matchesCat = _selectedCategory.isEmpty;
 
       if (!matchesCat) {
-        String selected = _selectedCategory.toLowerCase().trim();
-        IconData targetIcon = getIconForCategory(selected);
-
-        if (selected == 'all') {
-          matchesCat = true;
-        } else if (selected == 'others' || targetIcon == Icons.place) {
-          bool isUnknownCategory = !knownIcons.contains(item.icon);
-          bool nameMatchesQuery = item.name.toLowerCase().contains(selected);
-          matchesCat = isUnknownCategory || nameMatchesQuery;
-        } else {
+        // 🚀 যদি সাইডবার গ্রুপ ফিল্টার একটিভ থাকে, তবে মাল্টিপল সাব-আইটেম ম্যাচ লজিক (নতুন যুক্ত)
+        if (_currentActiveGroup == 'emergency') {
+          final n = item.name.toLowerCase();
+          final s = item.subtitle.toLowerCase();
           matchesCat =
-              item.icon == targetIcon ||
-              item.name.toLowerCase().contains(selected);
+              n.contains('hospital') ||
+              n.contains('police') ||
+              n.contains('fire') ||
+              n.contains('pharmacy') ||
+              s.contains('hospital') ||
+              s.contains('police') ||
+              s.contains('fire') ||
+              s.contains('pharmacy');
+        } else if (_currentActiveGroup == 'education') {
+          final n = item.name.toLowerCase();
+          final s = item.subtitle.toLowerCase();
+          matchesCat =
+              n.contains('school') ||
+              n.contains('college') ||
+              n.contains('university') ||
+              n.contains('madrasah') ||
+              n.contains('madrasa') ||
+              s.contains('school') ||
+              s.contains('college') ||
+              s.contains('university') ||
+              s.contains('madrasah') ||
+              s.contains('madrasa');
+        } else if (_currentActiveGroup == 'transport') {
+          final n = item.name.toLowerCase();
+          final s = item.subtitle.toLowerCase();
+          matchesCat =
+              n.contains('train') ||
+              n.contains('cng') ||
+              n.contains('bus') ||
+              n.contains('petrol') ||
+              n.contains('station') ||
+              s.contains('train') ||
+              s.contains('cng') ||
+              s.contains('bus') ||
+              s.contains('petrol') ||
+              s.contains('station');
+        } else {
+          // আপনার অরিজিনাল আগের লজিক (No Change)
+          String selected = _selectedCategory.toLowerCase().trim();
+          IconData targetIcon = getIconForCategory(selected);
+
+          if (selected == 'all') {
+            matchesCat = true;
+          } else if (selected == 'others' || targetIcon == Icons.place) {
+            bool isUnknownCategory = !knownIcons.contains(item.icon);
+            bool nameMatchesQuery = item.name.toLowerCase().contains(selected);
+            matchesCat = isUnknownCategory || nameMatchesQuery;
+          } else {
+            matchesCat =
+                item.icon == targetIcon ||
+                item.name.toLowerCase().contains(selected);
+          }
         }
       }
 
@@ -370,7 +451,13 @@ class HomeProvider extends ChangeNotifier {
   }
 
   IconData getIconForCategory(String category) {
-    switch (category.toLowerCase().trim()) {
+    // সাইডবার ডাইনামিক আইকন বাইন্ডিং সাপোর্ট
+    final cat = category.toLowerCase().trim();
+    if (cat == 'emergency') return Icons.gpp_bad;
+    if (cat == 'education') return Icons.cast_for_education;
+    if (cat == 'transport') return Icons.commute;
+
+    switch (cat) {
       case 'hospital':
         return Icons.local_hospital;
       case 'police':
@@ -393,7 +480,13 @@ class HomeProvider extends ChangeNotifier {
   }
 
   Color getColorForCategory(String category) {
-    switch (category.toLowerCase().trim()) {
+    // সাইডবার ডাইনামিক কালার বাইন্ডিং সাপোর্ট
+    final cat = category.toLowerCase().trim();
+    if (cat == 'emergency') return Colors.redAccent;
+    if (cat == 'education') return Colors.deepOrangeAccent;
+    if (cat == 'transport') return Colors.amber;
+
+    switch (cat) {
       case 'hospital':
         return Colors.blue;
       case 'police':
@@ -413,5 +506,112 @@ class HomeProvider extends ChangeNotifier {
       default:
         return Colors.purpleAccent;
     }
+  }
+
+  // 📊 ৭ নম্বর পিলারের ডাইনামিক গ্রাফ জেনারেটর (নতুন যুক্ত করা হয়েছে)
+  List<Map<String, dynamic>> get separateGraphList {
+    List<Map<String, dynamic>> items = [
+      {
+        'id': 'hospital',
+        'name': 'Hospital',
+        'icon': Icons.local_hospital,
+        'color': Colors.blue,
+        'count': 0,
+      },
+      {
+        'id': 'police',
+        'name': 'Police',
+        'icon': Icons.local_police,
+        'color': Colors.indigo,
+        'count': 0,
+      },
+      {
+        'id': 'school',
+        'name': 'School',
+        'icon': Icons.school,
+        'color': Colors.orange,
+        'count': 0,
+      },
+      {
+        'id': 'mosque',
+        'name': 'Mosque',
+        'icon': Icons.mosque,
+        'color': Colors.green,
+        'count': 0,
+      },
+      {
+        'id': 'petrol',
+        'name': 'Petrol',
+        'icon': Icons.local_gas_station,
+        'color': Colors.teal,
+        'count': 0,
+      },
+      {
+        'id': 'bus',
+        'name': 'Bus',
+        'icon': Icons.directions_bus,
+        'color': Colors.cyan,
+        'count': 0,
+      },
+    ];
+
+    for (var item in _allListings) {
+      if (item.icon == Icons.local_hospital)
+        items[0]['count'] = (items[0]['count'] as int) + 1;
+      if (item.icon == Icons.local_police)
+        items[1]['count'] = (items[1]['count'] as int) + 1;
+      if (item.icon == Icons.school)
+        items[2]['count'] = (items[2]['count'] as int) + 1;
+      if (item.icon == Icons.mosque)
+        items[3]['count'] = (items[3]['count'] as int) + 1;
+      if (item.icon == Icons.local_gas_station)
+        items[4]['count'] = (items[4]['count'] as int) + 1;
+      if (item.icon == Icons.directions_bus)
+        items[5]['count'] = (items[5]['count'] as int) + 1;
+    }
+
+    String currentCat = _selectedCategory.trim();
+    List<String> knownKeys = [
+      'hospital',
+      'police',
+      'school',
+      'mosque',
+      'petrol',
+      'bus',
+      'madrasah',
+      'madrasa',
+    ];
+
+    if (currentCat.isNotEmpty &&
+        !knownKeys.contains(currentCat.toLowerCase())) {
+      String shortName = currentCat;
+      IconData shortIcon = Icons.search;
+      Color shortColor = Colors.purpleAccent;
+
+      if (_currentActiveGroup == 'emergency') {
+        shortName = 'Emergency';
+        shortIcon = Icons.gpp_bad;
+        shortColor = Colors.redAccent;
+      } else if (_currentActiveGroup == 'education') {
+        shortName = 'Education';
+        shortIcon = Icons.cast_for_education;
+        shortColor = Colors.deepOrangeAccent;
+      } else if (_currentActiveGroup == 'transport') {
+        shortName = 'Transport';
+        shortIcon = Icons.commute;
+        shortColor = Colors.amber;
+      }
+
+      items.add({
+        'id': 'custom',
+        'name': shortName,
+        'icon': shortIcon,
+        'color': shortColor,
+        'count':
+            _filteredListings.length, // টোটাল কতগুলো গ্রুপ ডাটা ফিল্টারড হলো
+      });
+    }
+
+    return items;
   }
 }
